@@ -11,4 +11,6 @@ export function getAnthropic() {
   return _client;
 }
 
-export const MODEL = "claude-sonnet-4-6";
+// Opus 4.7 — priorizando qualidade de construção de texto e raciocínio na descoberta de pauta.
+// Trade-off conhecido: ~5x o custo do Sonnet 4.6, geração 8-12s vs 3-5s. Vale a pena pra autoria.
+export const MODEL = "claude-opus-4-7";
