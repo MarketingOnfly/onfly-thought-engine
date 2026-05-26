@@ -53,6 +53,34 @@ Conferidas no .env.local local + estão setadas na Vercel:
 - Nunca pedir pra ele mexer em queries antigas salvas na lateral do Supabase — todas as migrations devem ser SQL idempotente (`if not exists`, `drop policy if exists`).
 - Quando ele descrever um erro, pedir o texto exato — não adivinhar.
 
+## Barreira entre líderes (IMPORTANTE — não quebrar)
+
+Cada líder tem **aprendizado isolado**. Feedback do Vini não pode contaminar
+o prompt do Fred. As fronteiras que garantem isso, em ordem do banco pro
+prompt:
+
+1. **RLS em `content_feedback`** — política "self all" bloqueia leitura/
+   escrita cross-user. Único bypass: service_role (usado só pelo backend
+   em operações explícitas).
+2. **`leader_profiles.learned_preferences` é per-user** — coluna em uma
+   linha por líder.
+3. **`recomputeLearnedPreferences(userId)`** filtra `.eq("user_id", userId)`
+   no SELECT e no UPDATE. Toda chamada vem do POST /api/content/[id]/feedback
+   onde `userId = user.id` do usuário autenticado.
+4. **No prompt**, `learned_preferences` é injetado dentro de
+   `describeLeader(profile)` em `lib/anthropic/prompts.ts` — função que
+   recebe um perfil único por vez.
+
+O que é GLOBAL (compartilhado entre todos os líderes) e deve continuar global:
+- `HUMANIZER_RULES`
+- `POST_GUIDELINES` / `ARTICLE_GUIDELINES`
+- `org_documents` (frameworks que o admin curou)
+- `HOOK_STYLES`, `OBJECTIVES`, `TONE_TRAITS`, etc — catálogos
+
+**Regra dura**: aprendizado individual fica em `describeLeader()`. Não
+mover pra HUMANIZER_RULES nem pra constantes de módulo. Se for tentado a
+"generalizar" o aprendizado de um líder pra todos, é violação direta.
+
 ## Princípios de produto
 
 - **Voz própria do líder**, nunca da Onfly nem com cara de IA.

@@ -97,6 +97,16 @@ FECHAMENTO:
 - Sem CTA mole tipo "comente aí o que achou", "deixa sua opinião nos comentários". Se pedir ação, peça uma específica: "Me manda o número da sua taxa de no-show."
 - Liste 3 itens só quando os 3 têm peso próprio e tamanho diferente. Liste pareando substantivo curto + número, não adjetivos.`;
 
+/**
+ * IMPORTANTE: tudo aqui dentro é PER-LEADER. O `profile` chega de
+ * loadLeaderContext(userId) — feedback, preferências aprendidas, tom etc
+ * são daquela única pessoa.
+ *
+ * Não mover learned_preferences daqui pra HUMANIZER_RULES, regras globais
+ * ou qualquer constante de módulo — o que um líder aprende NÃO pode vazar
+ * pra outro. A barreira entre líderes é a RLS no banco + o escopo por
+ * userId nesta função.
+ */
 function describeLeader(profile: LeaderProfile): string {
   const traits = labelize(TONE_TRAITS, profile.tone_traits);
   const avoid = labelize(TONE_AVOID, profile.tone_avoid);
