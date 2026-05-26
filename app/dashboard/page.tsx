@@ -58,7 +58,9 @@ export default async function DashboardHome() {
       .order("posted_at", { ascending: true }),
     supabase
       .from("linkedin_connections")
-      .select("followers_count, linkedin_url")
+      .select(
+        "followers_count, linkedin_url, marketing_api_status, last_synced_at, created_at"
+      )
       .eq("user_id", user.id)
       .maybeSingle(),
   ]);
@@ -173,7 +175,9 @@ export default async function DashboardHome() {
       id: "linkedin",
       label: "Conectar LinkedIn pra puxar métricas",
       href: "/dashboard/analytics",
-      done: !!linkedin?.linkedin_url,
+      // Qualquer linkedin_connection já basta — métricas avançadas dependem
+      // da aprovação da Marketing API, fora do nosso controle.
+      done: !!linkedin,
     },
     {
       id: "first_draft",
@@ -249,7 +253,17 @@ export default async function DashboardHome() {
               ? formatCompact(linkedin.followers_count)
               : "—"
           }
-          hint={linkedin?.linkedin_url ? "via LinkedIn" : "conecte o LinkedIn"}
+          hint={
+            !linkedin
+              ? "conecte o LinkedIn"
+              : linkedin.followers_count != null
+                ? linkedin.last_synced_at
+                  ? `sync ${formatDate(linkedin.last_synced_at)}`
+                  : "via LinkedIn"
+                : linkedin.marketing_api_status === "approved"
+                  ? "aguardando primeira sync"
+                  : "conectado · API Marketing pendente"
+          }
         />
         <StatCard
           icon={BarChart3}
