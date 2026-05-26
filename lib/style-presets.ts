@@ -268,6 +268,40 @@ export const HOOK_STYLES = [
 export type HookStyleKey = (typeof HOOK_STYLES)[number]["key"];
 
 // ------------------------------------------------------------
+// MOOD / HUMOR DO LÍDER (usado em variações de geração)
+// ------------------------------------------------------------
+//
+// Cada humor é um estado interno do líder no momento de escrever.
+// Quando o líder pede 2-3 versões do mesmo conteúdo, o motor gera
+// uma por mood — dando variação semântica de verdade, não só de hook.
+
+export const MOOD_VARIATIONS = [
+  {
+    key: "best_day",
+    label: "No melhor dia",
+    description: "Otimista pé-no-chão, energia construtiva.",
+    promptHint:
+      "Tom equilibrado, aposta no futuro mas ancorado em fato real. Sem motivacional vazio. Vê o problema, aponta a saída.",
+  },
+  {
+    key: "critical",
+    label: "Cansado de ver erro",
+    description: "Crítico afiado, vai pra cima de uma prática equivocada.",
+    promptHint:
+      "Frases curtas, verbos fortes. Inimigo nomeado (concorrente, prática, crença). Sem chorar nem reclamar — argumenta com fato e ironia seca.",
+  },
+  {
+    key: "reflective",
+    label: "Reflexivo",
+    description: "Analítico calmo, conecta pontos com o leitor.",
+    promptHint:
+      "Primeira pessoa, processo de pensamento explícito. 'Estou pensando que…', 'Cheguei a conclusão depois de…'. Deixa o leitor pensar junto, não conclui sozinho.",
+  },
+] as const;
+
+export type MoodKey = (typeof MOOD_VARIATIONS)[number]["key"];
+
+// ------------------------------------------------------------
 // CARGOS E ÁREAS (presets pra evitar digitação no onboarding/perfil)
 // ------------------------------------------------------------
 

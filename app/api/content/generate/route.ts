@@ -1,56 +1,50 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createSupabaseServerClient, getServerUser } from "@/lib/supabase/server";
-import { getAnthropic, MODEL } from "@/lib/anthropic/client";
+import { getAnthropic, FAST_MODEL } from "@/lib/anthropic/client";
 import { loadLeaderContext } from "@/lib/anthropic/context";
 import {
   buildLeaderSystemPrompt,
   buildContentUserPrompt,
 } from "@/lib/anthropic/prompts";
 import { generateContentSchema } from "@/lib/validation";
-import { CONTENT_LENGTHS, HOOK_STYLES } from "@/lib/style-presets";
-import type { AltVersion } from "@/lib/db/types";
+import { CONTENT_LENGTHS, MOOD_VARIATIONS } from "@/lib/style-presets";
+import { planContent, planAsPromptContext } from "@/lib/anthropic/plan-content";
+import { polishPass } from "@/lib/anthropic/polish-pass";
+import { getFewShotExamples } from "@/lib/anthropic/few-shot";
+import type { AltVersion, LeaderProfile } from "@/lib/db/types";
 
-export const maxDuration = 90;
+export const maxDuration = 180;
 
 /**
- * Quando o líder pede mais de 1 variação, a gente força hooks distintos
- * pra cada uma — assim as versões abrem diferente em vez de saírem
- * variações sutis do mesmo texto.
+ * Pipeline de geração (cada chamada faz):
+ *  1. PLAN (Opus) — Sênior editor pensa estrutura, tensão, fato, mood.
+ *  2. DRAFT (Sonnet) — Executor escreve seguindo o plano + few-shot.
+ *  3. POLISH (Sonnet) — Anti-clichê + cut 20% + sensorial check.
  *
- * Bias 1: usa o hook escolhido pelo líder OU deixa o motor decidir.
- * Bias 2/3: pega hooks contrastantes da lista.
+ * Pra variações > 1: cada versão usa um MOOD distinto pra dar variação
+ * semântica de verdade (não só hook). Pipelines rodam em paralelo.
  */
-function pickHookBiases(
-  chosenHookStyle: string | null,
+
+function pickMoodBiases(
+  chosenMood: string | null,
   count: number
 ): (string | null)[] {
-  const biases: (string | null)[] = [chosenHookStyle];
+  const all = MOOD_VARIATIONS.map((m) => m.key) as string[];
+  const biases: (string | null)[] = [chosenMood];
   if (count <= 1) return biases;
-  // Hooks com personalidades bem distintas — escolhidos pra dar variedade
-  const diversityPool = [
-    "data_revelation",
-    "contradiction",
-    "story_open",
-    "confessional",
-    "common_enemy",
-    "forbidden_truth",
-  ];
-  const excluded = new Set<string>([chosenHookStyle ?? ""]);
-  for (const candidate of diversityPool) {
+  // Adiciona moods contrastantes
+  for (const m of all) {
     if (biases.length >= count) break;
-    if (excluded.has(candidate)) continue;
-    // Confirma que o hook existe no catálogo
-    if (!HOOK_STYLES.find((h) => h.key === candidate)) continue;
-    biases.push(candidate);
-    excluded.add(candidate);
+    if (biases.includes(m)) continue;
+    biases.push(m);
   }
   return biases.slice(0, count);
 }
 
-function labelForHook(hookKey: string | null): string {
-  if (!hookKey) return "abertura livre";
-  const h = HOOK_STYLES.find((x) => x.key === hookKey);
-  return h?.label.toLowerCase() ?? hookKey;
+function labelForMood(moodKey: string | null): string {
+  if (!moodKey) return "humor padrão";
+  const m = MOOD_VARIATIONS.find((x) => x.key === moodKey);
+  return m?.label.toLowerCase() ?? moodKey;
 }
 
 export async function POST(request: NextRequest) {
@@ -105,7 +99,9 @@ export async function POST(request: NextRequest) {
         hook_style: parsed.data.hook_style ?? null,
         objective: parsed.data.objective ?? null,
         content_type: parsed.data.content_type ?? null,
+        mood: parsed.data.mood ?? null,
         variations,
+        pipeline: "plan_draft_polish_v1",
       },
     })
     .select()
@@ -119,27 +115,60 @@ export async function POST(request: NextRequest) {
   }
 
   const draftId = insertRes.data.id;
-  const hookBiases = pickHookBiases(parsed.data.hook_style ?? null, variations);
+  const moodBiases = pickMoodBiases(parsed.data.mood ?? null, variations);
 
   try {
-    const anthropic = getAnthropic();
+    // ============================================================
+    // FASE 1 — PLAN (Opus, 1 chamada compartilhada por todas variações)
+    // ============================================================
+    const plan = await planContent({
+      format: parsed.data.format,
+      topic: parsed.data.topic,
+      brief: parsed.data.brief ?? null,
+      leader: context.leader as LeaderProfile,
+    });
+    const planContext = planAsPromptContext(plan);
 
-    // N calls em paralelo, cada um com hook bias diferente
-    const calls = hookBiases.map(async (hookKey) => {
+    // ============================================================
+    // FASE 2 — DRAFT (Sonnet, N paralelas com mood distinto)
+    //          + opcional web_search se fact_check=true
+    // ============================================================
+    const fewShot = await getFewShotExamples({
+      userId: user.id,
+      format: parsed.data.format,
+      excludeId: draftId,
+    });
+
+    const anthropic = getAnthropic();
+    const calls = moodBiases.map(async (moodKey) => {
       const userPrompt = buildContentUserPrompt({
         format: parsed.data.format,
         topic: parsed.data.topic,
         brief: parsed.data.brief,
         extraInstructions: parsed.data.extra_instructions,
-        hookStyle: hookKey,
+        hookStyle: parsed.data.hook_style,
         objective: parsed.data.objective,
         contentType: parsed.data.content_type,
         length: parsed.data.length ?? null,
         toneOverride: parsed.data.tone_override ?? null,
+        mood: moodKey as "best_day" | "critical" | "reflective" | null,
+        planContext,
+        fewShot,
       });
 
+      const tools = parsed.data.fact_check
+        ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ([
+            {
+              type: "web_search_20250305",
+              name: "web_search",
+              max_uses: 2,
+            },
+          ] as any)
+        : undefined;
+
       const response = await anthropic.messages.create({
-        model: MODEL,
+        model: FAST_MODEL, // Sonnet é mais que suficiente — o plano vem do Opus
         max_tokens: maxTokens,
         system: [
           {
@@ -148,49 +177,61 @@ export async function POST(request: NextRequest) {
             cache_control: { type: "ephemeral" },
           },
         ],
+        ...(tools ? { tools } : {}),
         messages: [{ role: "user", content: userPrompt }],
       });
 
-      const text = response.content
+      const raw = response.content
         .filter((b) => b.type === "text")
         .map((b) => (b as { text: string }).text)
         .join("\n")
         .trim();
 
-      return { hookKey, text };
+      return { moodKey, raw };
     });
 
-    const settled = await Promise.allSettled(calls);
-    const successful = settled
+    const drafted = (await Promise.allSettled(calls))
       .map((r) => (r.status === "fulfilled" ? r.value : null))
-      .filter((x): x is { hookKey: string | null; text: string } => !!x && !!x.text);
+      .filter((x): x is { moodKey: string | null; raw: string } => !!x && !!x.raw);
 
-    if (!successful.length) {
-      const reason = settled.find((r) => r.status === "rejected") as
-        | PromiseRejectedResult
-        | undefined;
-      throw new Error(
-        reason?.reason instanceof Error
-          ? reason.reason.message
-          : "Todas as gerações falharam."
-      );
-    }
+    if (!drafted.length) throw new Error("Todas as gerações falharam na fase de draft.");
 
-    // Primeira chamada vira o draft principal. Outras viram alt_versions.
-    const primary = successful[0];
-    const alts: AltVersion[] = successful.slice(1).map((s, i) => ({
+    // ============================================================
+    // FASE 3 — POLISH (Sonnet, N paralelas: anti-clichê + cut + sensorial)
+    // ============================================================
+    const polished = await Promise.allSettled(
+      drafted.map((d) =>
+        polishPass({
+          draft: d.raw,
+          format: parsed.data.format,
+          notes: `Versão ${labelForMood(d.moodKey)}`,
+        })
+      )
+    );
+
+    const final = drafted.map((d, i) => {
+      const p = polished[i];
+      const text = p.status === "fulfilled" && p.value ? p.value : d.raw;
+      return { moodKey: d.moodKey, text };
+    });
+
+    // ============================================================
+    // Salva primary + alt_versions + plan no meta
+    // ============================================================
+    const primary = final[0];
+    const alts: AltVersion[] = final.slice(1).map((s, i) => ({
       id: crypto.randomUUID(),
-      label: `Versão ${String.fromCharCode(66 + i)} — ${labelForHook(s.hookKey)}`, // B, C, D...
+      label: `Versão ${String.fromCharCode(66 + i)} — ${labelForMood(s.moodKey)}`,
       body: s.text,
       generated_at: new Date().toISOString(),
     }));
 
-    // Salva também a versão A no histórico (pra restaurar depois)
+    // Salva versão A no histórico
     await supabase.from("draft_versions").insert({
       content_draft_id: draftId,
       user_id: user.id,
       body: primary.text,
-      reason: `Geração inicial — Versão A (${labelForHook(primary.hookKey)})`,
+      reason: `Geração inicial — Versão A (${labelForMood(primary.moodKey)})`,
     });
 
     const { data: updated, error: updErr } = await supabase
@@ -198,6 +239,10 @@ export async function POST(request: NextRequest) {
       .update({
         draft_markdown: primary.text,
         alt_versions: alts,
+        meta: {
+          ...((insertRes.data.meta as Record<string, unknown>) ?? {}),
+          plan,
+        },
       })
       .eq("id", draftId)
       .select()

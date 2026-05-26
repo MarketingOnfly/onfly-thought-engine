@@ -12,6 +12,7 @@ import {
   CONTENT_LENGTHS,
   CONTENT_TYPES,
   HOOK_STYLES,
+  MOOD_VARIATIONS,
   OBJECTIVES,
   TONE_AVOID,
   TONE_TRAITS,
@@ -95,7 +96,14 @@ DIÁLOGO COM O LEITOR:
 FECHAMENTO:
 - Fechamento não resume. Fechamento provoca, deixa frase de impacto ou chama a ação concreta. Sem "no fim, tudo é sobre pessoas".
 - Sem CTA mole tipo "comente aí o que achou", "deixa sua opinião nos comentários". Se pedir ação, peça uma específica: "Me manda o número da sua taxa de no-show."
-- Liste 3 itens só quando os 3 têm peso próprio e tamanho diferente. Liste pareando substantivo curto + número, não adjetivos.`;
+- Liste 3 itens só quando os 3 têm peso próprio e tamanho diferente. Liste pareando substantivo curto + número, não adjetivos.
+
+CARA DE HUMANO (irregularidade intencional — IA tende a ser uniforme demais):
+- Varie tamanho de frase: misture frases de 3-6 palavras com frases de 12-20 palavras. Tenha PELO MENOS 2 frases isoladas como parágrafo próprio.
+- Toda IA produz parágrafos com tamanho parecido. Humano não. Tenha um parágrafo de UMA frase, outro de 4-5 linhas, outro de 2.
+- Inclua UMA digressão curta — uma frase entre o meio e o fim que parece quase fora do assunto mas conecta ("Lembrei disso vendo o Slack do meu time domingo de noite."). Texto IA mantém foco perfeito; humano vagueia 1 segundo e volta.
+- Vocabulário pode misturar registro: termo técnico do operador + uma palavra coloquial inesperada na mesma frase. "Margem queima e a galera vê pelo dashboard." Isso quebra a regularidade.
+- Pequenas auto-correções intencionais funcionam às vezes — "Achei que era processo. Era cultura." Cria sensação de pensamento em movimento, não de slide finalizado.`;
 
 /**
  * IMPORTANTE: tudo aqui dentro é PER-LEADER. O `profile` chega de
@@ -296,6 +304,9 @@ export function buildContentUserPrompt(opts: {
   contentType?: string | null;
   length?: "short" | "medium" | "long" | null;
   toneOverride?: string[] | null;
+  mood?: "best_day" | "critical" | "reflective" | null;
+  planContext?: string | null; // resultado de planAsPromptContext()
+  fewShot?: string | null; // posts anteriores do próprio líder de alto desempenho
 }): string {
   const formatRules =
     opts.format === "linkedin_post" ? POST_GUIDELINES : ARTICLE_GUIDELINES;
@@ -342,6 +353,21 @@ export function buildContentUserPrompt(opts: {
       })()
     : "";
 
+  const moodHint = opts.mood
+    ? (() => {
+        const m = MOOD_VARIATIONS.find((x) => x.key === opts.mood);
+        return m
+          ? `\nHUMOR DO LÍDER NESTE TEXTO: ${m.label} — ${m.promptHint}`
+          : "";
+      })()
+    : "";
+
+  const fewShotBlock = opts.fewShot
+    ? `\nEXEMPLOS DE POSTS REAIS QUE ESSE LÍDER PUBLICOU E PERFORMARAM BEM (siga forma, ritmo, vocabulário — NÃO o tema):\n\n${opts.fewShot}\n`
+    : "";
+
+  const planBlock = opts.planContext ? `\n${opts.planContext}\n` : "";
+
   return [
     `TAREFA: produzir um ${opts.format === "linkedin_post" ? "POST DE LINKEDIN" : "ARTIGO DE AUTORIDADE"} sobre o tema abaixo, assinado pelo líder descrito no system prompt.`,
     "",
@@ -351,7 +377,10 @@ export function buildContentUserPrompt(opts: {
     contentTypeHint,
     hookHint,
     toneHint,
+    moodHint,
     "",
+    planBlock,
+    fewShotBlock,
     opts.brief
       ? `BRIEFING DO LÍDER:\n${opts.brief}`
       : "BRIEFING DO LÍDER: (sem briefing — use os documentos e contexto do system prompt).",

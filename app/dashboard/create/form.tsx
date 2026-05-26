@@ -22,6 +22,7 @@ import {
   CONTENT_LENGTHS,
   CONTENT_TYPES,
   HOOK_STYLES,
+  MOOD_VARIATIONS,
   OBJECTIVES,
   TONE_TRAITS,
 } from "@/lib/style-presets";
@@ -63,6 +64,10 @@ export default function CreateForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [variations, setVariations] = useState<1 | 2 | 3>(1);
+  const [mood, setMood] = useState<"best_day" | "critical" | "reflective" | null>(
+    null
+  );
+  const [factCheck, setFactCheck] = useState(false);
   const [overlap, setOverlap] = useState<{
     matches: { id: string; topic: string; created_at: string; shared: number }[];
     total: number;
@@ -121,6 +126,8 @@ export default function CreateForm({
         length,
         tone_override: toneOverride.length ? toneOverride : null,
         variations,
+        mood,
+        fact_check: factCheck,
       }),
     });
     setBusy(false);
@@ -137,9 +144,11 @@ export default function CreateForm({
     if (hookStyle) n++;
     if (contentType) n++;
     if (toneOverride.length) n++;
+    if (mood) n++;
+    if (factCheck) n++;
     if (extra.trim()) n++;
     return n;
-  }, [objective, hookStyle, contentType, toneOverride, extra]);
+  }, [objective, hookStyle, contentType, toneOverride, mood, factCheck, extra]);
 
   return (
     <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_280px]">
@@ -376,6 +385,68 @@ export default function CreateForm({
                     onChange={setToneOverride}
                   />
                 </div>
+              </div>
+
+              <div>
+                <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Em que humor está hoje
+                </Label>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Define o estado emocional do texto. Se gerar 2-3 versões, cada
+                  uma usa um humor distinto.
+                </p>
+                <div className="mt-2 grid gap-2 md:grid-cols-3">
+                  {MOOD_VARIATIONS.map((m) => (
+                    <button
+                      key={m.key}
+                      type="button"
+                      onClick={() =>
+                        setMood(mood === m.key ? null : (m.key as typeof mood))
+                      }
+                      className={cn(
+                        "rounded-xl border p-3 text-left transition",
+                        mood === m.key
+                          ? "border-brand-500 bg-brand-50/60"
+                          : "border-border bg-background hover:bg-secondary/50"
+                      )}
+                    >
+                      <p
+                        className={cn(
+                          "text-sm font-medium",
+                          mood === m.key && "text-brand-700"
+                        )}
+                      >
+                        {m.label}
+                      </p>
+                      <p className="mt-1 text-[10px] text-muted-foreground">
+                        {m.description}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Verificação de fato (opcional)
+                </Label>
+                <label className="mt-2 flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-background p-3 transition hover:bg-secondary/30">
+                  <input
+                    type="checkbox"
+                    checked={factCheck}
+                    onChange={(e) => setFactCheck(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 accent-brand-600"
+                  />
+                  <div className="text-xs">
+                    <p className="font-medium text-foreground">
+                      Verificar números na web durante a geração
+                    </p>
+                    <p className="mt-0.5 text-muted-foreground">
+                      Motor busca dados reais antes de citar estatística. Mais
+                      lento (+30s) mas evita número inventado.
+                    </p>
+                  </div>
+                </label>
               </div>
 
               <div>
