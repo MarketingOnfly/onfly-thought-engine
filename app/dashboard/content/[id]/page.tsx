@@ -14,12 +14,19 @@ export default async function ContentDetail({
   const supabase = await createSupabaseServerClient();
   const { id } = await params;
 
-  const { data, error } = await supabase
-    .from("content_drafts")
-    .select("*")
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const [{ data, error }, { data: profile }] = await Promise.all([
+    supabase
+      .from("content_drafts")
+      .select("*")
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("leader_profiles")
+      .select("full_name, role, avatar_url")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+  ]);
 
   if (error || !data) notFound();
 
@@ -32,7 +39,12 @@ export default async function ContentDetail({
         <ArrowLeft className="h-4 w-4" /> Biblioteca
       </Link>
 
-      <ContentEditor initial={data as ContentDraft} />
+      <ContentEditor
+        initial={data as ContentDraft}
+        authorName={(profile?.full_name as string) ?? "Você"}
+        authorRole={(profile?.role as string | null) ?? null}
+        authorAvatar={(profile?.avatar_url as string | null) ?? null}
+      />
     </div>
   );
 }

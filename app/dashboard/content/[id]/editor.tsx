@@ -26,10 +26,20 @@ import { Markdown, PlainPost } from "@/components/markdown";
 import { InfographicRenderer } from "@/components/visual-renderer";
 import { ReviewPanel } from "@/components/review-panel";
 import { FeedbackPanel } from "@/components/feedback-panel";
-import type { ContentDraft, ContentVisual } from "@/lib/db/types";
-import { formatDate, slugify } from "@/lib/utils";
+import { StyleScoreCard } from "@/components/style-score-card";
+import { LinkedInPreview } from "@/components/linkedin-preview";
+import { VariationsTabs } from "@/components/variations-tabs";
+import { VersionsHistory } from "@/components/versions-history";
+import type {
+  AltVersion,
+  ContentDraft,
+  ContentVisual,
+  StyleScore,
+} from "@/lib/db/types";
+import { cn, formatDate, slugify } from "@/lib/utils";
 import { apiFetch } from "@/lib/client-fetch";
 import { useConfirm } from "@/components/confirm";
+import { Maximize2, Minimize2, Eye, FileCode } from "lucide-react";
 
 type Archetype =
   | "stats_grid"
@@ -76,7 +86,17 @@ const ARCHETYPES: {
   },
 ];
 
-export default function ContentEditor({ initial }: { initial: ContentDraft }) {
+export default function ContentEditor({
+  initial,
+  authorName,
+  authorRole,
+  authorAvatar,
+}: {
+  initial: ContentDraft;
+  authorName: string;
+  authorRole: string | null;
+  authorAvatar: string | null;
+}) {
   const router = useRouter();
   const [draft, setDraft] = useState<ContentDraft>(initial);
   const [revising, setRevising] = useState(false);
@@ -92,7 +112,40 @@ export default function ContentEditor({ initial }: { initial: ContentDraft }) {
   const [scheduleDraft, setScheduleDraft] = useState(
     initial.scheduled_at ? toLocalInputValue(initial.scheduled_at) : ""
   );
+  // Variação ativa: 0 = primary (draft_markdown), 1+ = alt_versions[i-1]
+  const [activeVariation, setActiveVariation] = useState(0);
+  // Modo de exibição: "preview" = mockup LinkedIn, "raw" = texto cru
+  const [viewMode, setViewMode] = useState<"preview" | "raw">(
+    initial.format === "linkedin_post" ? "preview" : "raw"
+  );
+  // Modo foco — esconde tudo menos o texto
+  const [focusMode, setFocusMode] = useState(false);
   const confirm = useConfirm();
+
+  const isPost = draft.format === "linkedin_post";
+  const alts = (draft.alt_versions as AltVersion[] | undefined) ?? [];
+  const styleScore = (draft.style_score as StyleScore | null) ?? null;
+
+  // O texto exibido depende da variação ativa
+  const variationText =
+    activeVariation === 0
+      ? draft.draft_markdown ?? ""
+      : alts[activeVariation - 1]?.body ?? draft.draft_markdown ?? "";
+
+  async function promoteVariation(versionId: string) {
+    const res = await apiFetch<{ draft: ContentDraft }>(
+      `/api/content/${draft.id}/use-variation`,
+      {
+        method: "POST",
+        body: JSON.stringify({ version_id: versionId }),
+      }
+    );
+    if (res.ok) {
+      setDraft(res.data.draft);
+      setLocalText(res.data.draft.draft_markdown ?? "");
+      setActiveVariation(0);
+    }
+  }
 
   useEffect(() => {
     void loadVisuals();
@@ -146,8 +199,8 @@ export default function ContentEditor({ initial }: { initial: ContentDraft }) {
     }
   }
 
-  const isPost = draft.format === "linkedin_post";
-  const display = draft.draft_markdown ?? "";
+  // isPost vem do bloco de hooks acima. display agora aponta pra variação ativa.
+  const display = variationText;
 
   async function revise() {
     setRevising(true);
@@ -242,13 +295,31 @@ export default function ContentEditor({ initial }: { initial: ContentDraft }) {
         <p className="mt-3 max-w-3xl text-sm text-muted-foreground">{draft.brief}</p>
       )}
 
-      <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_320px]">
+      <div
+        className={cn(
+          "mt-8 grid gap-6",
+          focusMode ? "grid-cols-1" : "lg:grid-cols-[1fr_320px]"
+        )}
+      >
         <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+          {/* Tabs de variações (só aparece se houver alts) */}
+          {alts.length > 0 && !editing && (
+            <div className="-mx-6 -mt-6 mb-4">
+              <VariationsTabs
+                primary={draft.draft_markdown ?? ""}
+                alternates={alts}
+                activeIndex={activeVariation}
+                onPick={setActiveVariation}
+                onPromote={promoteVariation}
+              />
+            </div>
+          )}
+
           <div className="flex items-center justify-between border-b border-border pb-4">
             <h2 className="text-sm font-medium text-muted-foreground">
               {editing ? "Editando manualmente" : "Rascunho"}
             </h2>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {editing ? (
                 <>
                   <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
@@ -260,12 +331,45 @@ export default function ContentEditor({ initial }: { initial: ContentDraft }) {
                 </>
               ) : (
                 <>
+                  {/* Toggle preview <> raw — só pra posts */}
+                  {isPost && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        setViewMode(viewMode === "preview" ? "raw" : "preview")
+                      }
+                      title="Trocar visualização"
+                    >
+                      {viewMode === "preview" ? (
+                        <>
+                          <FileCode className="h-3.5 w-3.5" /> Texto
+                        </>
+                      ) : (
+                        <>
+                          <Eye className="h-3.5 w-3.5" /> Preview LinkedIn
+                        </>
+                      )}
+                    </Button>
+                  )}
                   <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
                     Editar texto
                   </Button>
                   <Button variant="ghost" size="sm" onClick={copy}>
                     {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                     {copied ? "Copiado" : "Copiar"}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setFocusMode((v) => !v)}
+                    title={focusMode ? "Sair do modo foco" : "Modo foco"}
+                  >
+                    {focusMode ? (
+                      <Minimize2 className="h-3.5 w-3.5" />
+                    ) : (
+                      <Maximize2 className="h-3.5 w-3.5" />
+                    )}
                   </Button>
                 </>
               )}
@@ -282,7 +386,18 @@ export default function ContentEditor({ initial }: { initial: ContentDraft }) {
               />
             ) : (
               <div className="mt-6">
-                {isPost ? <PlainPost source={display} /> : <Markdown source={display} />}
+                {isPost && viewMode === "preview" ? (
+                  <LinkedInPreview
+                    text={display}
+                    authorName={authorName}
+                    authorRole={authorRole}
+                    authorAvatar={authorAvatar}
+                  />
+                ) : isPost ? (
+                  <PlainPost source={display} />
+                ) : (
+                  <Markdown source={display} />
+                )}
               </div>
             )
           ) : (
@@ -293,7 +408,7 @@ export default function ContentEditor({ initial }: { initial: ContentDraft }) {
           )}
         </div>
 
-        <aside className="space-y-4">
+        <aside className={cn("space-y-4", focusMode && "hidden")}>
           {editing && (
             <ReviewPanel
               text={localText}
@@ -302,9 +417,26 @@ export default function ContentEditor({ initial }: { initial: ContentDraft }) {
             />
           )}
 
+          {/* Score de aderência ao estilo — auto-roda ao abrir */}
+          {display && !editing && (
+            <StyleScoreCard draftId={draft.id} initial={styleScore} />
+          )}
+
           {/* Feedback: aparece quando já tem rascunho gerado, pra o líder
               avaliar e o motor aprender. */}
           {display && !editing && <FeedbackPanel draftId={draft.id} />}
+
+          {/* Histórico de versões — colapsado por default */}
+          {display && !editing && (
+            <VersionsHistory
+              draftId={draft.id}
+              onRestored={(body) => {
+                setDraft((d) => ({ ...d, draft_markdown: body }));
+                setLocalText(body);
+                setActiveVariation(0);
+              }}
+            />
+          )}
 
           <div className="rounded-2xl border border-border bg-card p-5">
             <h3 className="text-sm font-medium">Pedir ajustes em português</h3>
