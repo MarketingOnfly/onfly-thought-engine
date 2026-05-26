@@ -45,6 +45,14 @@ Conferidas no .env.local local + estão setadas na Vercel:
 - `NEXT_PUBLIC_APP_URL` — URL pública (precisa bater com o deploy pra magic links)
 - `LINKEDIN_CLIENT_ID` / `LINKEDIN_CLIENT_SECRET` / `LINKEDIN_REDIRECT_URI`
 
+## Como falar com o Vini (o usuário)
+
+- Vini é CMO, não dev. Instruções precisam ser ELI12 ("explica como pra um menino de 12 anos").
+- Sempre indicar **explicitamente** se uma ação é "abrir aba nova" ou "mexer em código existente". Default: aba nova.
+- Pra qualquer SQL: deixar claro que vai no SQL Editor do Supabase, em uma **nova query** (botão "+ New query" no canto superior direito), e que o resultado esperado é "Success. No rows returned" em verde.
+- Nunca pedir pra ele mexer em queries antigas salvas na lateral do Supabase — todas as migrations devem ser SQL idempotente (`if not exists`, `drop policy if exists`).
+- Quando ele descrever um erro, pedir o texto exato — não adivinhar.
+
 ## Princípios de produto
 
 - **Voz própria do líder**, nunca da Onfly nem com cara de IA.
