@@ -11,28 +11,24 @@ import { Label } from "@/components/ui/label";
 
 export default function LoginForm() {
   const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [password, setPassword] = useState("");
+  const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const searchParams = useSearchParams();
   const next = searchParams.get("next") ?? "/dashboard";
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setStatus("sending");
+    setStatus("loading");
     setErrorMsg(null);
     try {
       const supabase = createSupabaseBrowserClient();
-      const origin =
-        process.env.NEXT_PUBLIC_APP_URL ??
-        (typeof window !== "undefined" ? window.location.origin : "");
-      const { error } = await supabase.auth.signInWithOtp({
+      const { error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
-        options: {
-          emailRedirectTo: `${origin}/auth/callback?next=${encodeURIComponent(next)}`,
-        },
+        password,
       });
       if (error) throw error;
-      setStatus("sent");
+      window.location.href = next;
     } catch (err: unknown) {
       setStatus("error");
       setErrorMsg(err instanceof Error ? err.message : "Erro desconhecido");
@@ -56,46 +52,58 @@ export default function LoginForm() {
         <div className="mt-8 rounded-2xl border border-border bg-card p-8 shadow-sm">
           <h1 className="font-display text-3xl tracking-tight">Entrar</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Use seu e-mail Onfly. Mandamos um link mágico — sem senha.
+            Use seu e-mail e senha Onfly.
           </p>
 
-          {status === "sent" ? (
-            <div className="mt-6 rounded-xl border border-brand-200 bg-brand-50 p-5 text-sm text-brand-800">
-              <p className="font-medium">Link enviado.</p>
-              <p className="mt-1 text-brand-700">
-                Confira <span className="font-mono">{email}</span>. O link te leva direto pro
-                dashboard.
-              </p>
+          <form onSubmit={onSubmit} className="mt-6 space-y-4">
+            <div>
+              <Label htmlFor="email">E-mail</Label>
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                required
+                placeholder="nome@onfly.com.br"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="mt-2"
+              />
             </div>
-          ) : (
-            <form onSubmit={onSubmit} className="mt-6 space-y-4">
-              <div>
-                <Label htmlFor="email">E-mail Onfly</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  placeholder="nome@onfly.com.br"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="mt-2"
-                />
-              </div>
-              {errorMsg && (
-                <p className="text-sm text-destructive">{errorMsg}</p>
-              )}
-              <Button
-                type="submit"
-                variant="primary"
-                size="lg"
-                className="w-full"
-                disabled={status === "sending"}
-              >
-                {status === "sending" ? "Enviando..." : "Enviar link mágico"}
-              </Button>
-            </form>
-          )}
+            <div>
+              <Label htmlFor="password">Senha</Label>
+              <Input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="mt-2"
+              />
+            </div>
+            {errorMsg && (
+              <p className="text-sm text-destructive">{errorMsg}</p>
+            )}
+            <Button
+              type="submit"
+              variant="primary"
+              size="lg"
+              className="w-full"
+              disabled={status === "loading"}
+            >
+              {status === "loading" ? "Entrando..." : "Entrar"}
+            </Button>
+          </form>
+
+          <div className="mt-4 flex items-center justify-between text-sm">
+            <Link href="/cadastro" className="text-muted-foreground hover:text-foreground">
+              Criar conta
+            </Link>
+            <Link href="/recuperar-senha" className="text-muted-foreground hover:text-foreground">
+              Esqueci minha senha
+            </Link>
+          </div>
         </div>
 
         <p className="mt-6 text-center text-xs text-muted-foreground">
