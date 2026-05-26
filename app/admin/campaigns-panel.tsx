@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
+  Bookmark,
   CalendarDays,
   CheckCircle2,
   FileText,
@@ -938,12 +939,60 @@ function CampaignRow({
               </>
             )}
           </Button>
+          {campaign.status === "sent" && (
+            <SaveAsTemplateButton campaign={campaign} />
+          )}
           <Button variant="ghost" size="sm" onClick={onRemove}>
             <Trash2 className="h-3.5 w-3.5" /> Excluir
           </Button>
         </div>
       </div>
     </li>
+  );
+}
+
+function SaveAsTemplateButton({ campaign }: { campaign: Campaign }) {
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  async function save() {
+    const name = window.prompt(
+      "Nome do template:",
+      `Template — ${campaign.name}`
+    );
+    if (!name) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/campaign-templates", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name,
+          description: `Salvo a partir de "${campaign.name}"`,
+          theme_template: campaign.theme,
+          brief_template: campaign.brief,
+          format: campaign.format,
+          category: "saved",
+        }),
+      });
+      if (res.ok) {
+        setSaved(true);
+        setTimeout(() => setSaved(false), 3000);
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <Button variant="ghost" size="sm" onClick={save} disabled={busy}>
+      {busy ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : saved ? (
+        <CheckCircle2 className="h-3.5 w-3.5 text-brand-600" />
+      ) : (
+        <Bookmark className="h-3.5 w-3.5" />
+      )}
+      {saved ? "Salvo" : "Salvar como template"}
+    </Button>
   );
 }
 
