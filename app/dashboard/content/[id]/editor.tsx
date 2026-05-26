@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { Markdown, PlainPost } from "@/components/markdown";
 import { InfographicRenderer } from "@/components/visual-renderer";
 import { ReviewPanel } from "@/components/review-panel";
+import { FeedbackPanel } from "@/components/feedback-panel";
 import type { ContentDraft, ContentVisual } from "@/lib/db/types";
 import { formatDate, slugify } from "@/lib/utils";
 import { apiFetch } from "@/lib/client-fetch";
@@ -300,6 +301,10 @@ export default function ContentEditor({ initial }: { initial: ContentDraft }) {
               enabled
             />
           )}
+
+          {/* Feedback: aparece quando já tem rascunho gerado, pra o líder
+              avaliar e o motor aprender. */}
+          {display && !editing && <FeedbackPanel draftId={draft.id} />}
 
           <div className="rounded-2xl border border-border bg-card p-5">
             <h3 className="text-sm font-medium">Pedir ajustes em português</h3>

@@ -148,7 +148,10 @@ ESTILOS DE HOOK PREFERIDOS:
 ${hookStyles}
 
 BRIEFING ADICIONAL DO LÍDER:
-${profile.custom_briefing ?? "(nenhum)"}`;
+${profile.custom_briefing ?? "(nenhum)"}
+
+PREFERÊNCIAS APRENDIDAS A PARTIR DE FEEDBACKS ANTERIORES (PRIORIDADE MÁXIMA — segue ao pé da letra):
+${profile.learned_preferences?.trim() || "(ainda sem feedback acumulado — gere normalmente, o líder vai calibrar com nota e comentário depois)"}`;
 }
 
 function describeReferenceProfiles(refs: ReferenceProfile[]): string {

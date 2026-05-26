@@ -39,8 +39,33 @@ export interface LeaderProfile {
   timezone: string;
   notification_email: boolean;
   notification_digest: "never" | "daily" | "weekly";
+  // preferências aprendidas a partir do feedback do líder (migration 012)
+  learned_preferences: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ContentFeedback {
+  id: string;
+  user_id: string;
+  content_draft_id: string;
+  rating: 1 | 2 | 3 | 4 | 5;
+  comment: string | null;
+  created_at: string;
+}
+
+export interface NewsItem {
+  title: string;
+  url: string;
+  source: string;
+  summary: string;
+  published_at?: string | null;
+}
+
+export interface DailyNewsCache {
+  user_id: string;
+  items: NewsItem[];
+  fetched_at: string;
 }
 
 export type ReferenceAnalysisStatus =

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { ReferenceLink, TopicSuggestion } from "@/lib/db/types";
 import { apiFetch } from "@/lib/client-fetch";
+import { NewsFeed } from "@/components/news-feed";
 
 const STAGES = [
   { until: 10, label: "Lendo as fontes da sua biblioteca…" },
@@ -90,6 +91,9 @@ export default function DiscoverPanel({
   return (
     <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_300px]">
       <div className="space-y-4">
+        {/* News feed: visualização rápida de notícias do dia */}
+        <NewsFeed />
+
         <div className="rounded-2xl border border-border bg-card p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
