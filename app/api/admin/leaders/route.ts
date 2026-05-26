@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServerClient, getServerUser } from "@/lib/supabase/server";
+import {
+  createSupabaseAdminClient,
+  createSupabaseServerClient,
+  getServerUser,
+} from "@/lib/supabase/server";
 import { isAdmin } from "@/lib/admin";
 
 export async function GET() {
@@ -8,9 +12,14 @@ export async function GET() {
   if (!(await isAdmin(user)))
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
-  const supabase = await createSupabaseServerClient();
+  // Service role ignora RLS — admin enxerga todos os líderes na view.
+  let supabase;
+  try {
+    supabase = createSupabaseAdminClient();
+  } catch {
+    supabase = await createSupabaseServerClient();
+  }
 
-  // pull from leader_overview view (created in migration 003)
   const { data, error } = await supabase
     .from("leader_overview")
     .select("*")

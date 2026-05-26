@@ -10,7 +10,11 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
-import { createSupabaseServerClient, getServerUser } from "@/lib/supabase/server";
+import {
+  createSupabaseAdminClient,
+  createSupabaseServerClient,
+  getServerUser,
+} from "@/lib/supabase/server";
 import { isAdmin } from "@/lib/admin";
 import { Badge } from "@/components/ui/badge";
 import { formatCompact } from "@/components/charts";
@@ -44,7 +48,15 @@ export default async function LeaderDetailPage({
   if (!(await isAdmin(user))) redirect("/dashboard");
 
   const { user_id } = await params;
-  const supabase = await createSupabaseServerClient();
+  // Tenta service_role pra ignorar RLS — admin pode ler perfil/drafts de
+  // qualquer líder. Se a env não estiver setada, cai pro client normal
+  // (depende das policies da migration 011 + auth do user).
+  let supabase;
+  try {
+    supabase = createSupabaseAdminClient();
+  } catch {
+    supabase = await createSupabaseServerClient();
+  }
 
   const [profileRes, linkedinRes, draftsRes, campaignsRes, metricsRes] =
     await Promise.all([
