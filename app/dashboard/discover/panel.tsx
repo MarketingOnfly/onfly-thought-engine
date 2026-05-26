@@ -1,10 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bookmark, Compass, ExternalLink, RefreshCw, Trash2, Wand2 } from "lucide-react";
+import {
+  Bookmark,
+  ChevronLeft,
+  ChevronRight,
+  Compass,
+  ExternalLink,
+  RefreshCw,
+  Sparkles,
+  Trash2,
+  Wand2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import type { ReferenceLink, TopicSuggestion } from "@/lib/db/types";
 import { apiFetch } from "@/lib/client-fetch";
 import { NewsFeed } from "@/components/news-feed";
@@ -30,6 +41,11 @@ export default function DiscoverPanel({
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const startedAt = useRef<number | null>(null);
+
+  // Paginação + filtros
+  const [filter, setFilter] = useState<"all" | "new" | "saved">("all");
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 9;
 
   // tick a 1s timer while running
   useEffect(() => {
@@ -87,6 +103,30 @@ export default function DiscoverPanel({
     });
     router.push(`/dashboard/create?${params.toString()}`);
   }
+
+  const filtered = useMemo(() => {
+    if (filter === "all") return ideas;
+    if (filter === "saved") return ideas.filter((i) => i.status === "saved");
+    return ideas.filter((i) => i.status === "new");
+  }, [ideas, filter]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pageItems = filtered.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE
+  );
+
+  // Volta pra primeira página quando filter ou conjunto muda muito
+  useEffect(() => {
+    setPage(1);
+  }, [filter]);
+
+  const counts = {
+    all: ideas.length,
+    new: ideas.filter((i) => i.status === "new").length,
+    saved: ideas.filter((i) => i.status === "saved").length,
+  };
 
   return (
     <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_300px]">
@@ -147,79 +187,172 @@ export default function DiscoverPanel({
         )}
 
         {ideas.length ? (
-          <ul className="space-y-3">
-            {ideas.map((idea) => (
-              <li
-                key={idea.id}
-                className="rounded-2xl border border-border bg-card p-5 shadow-sm transition-shadow hover:shadow-md"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="brand">{idea.relevance_score}</Badge>
-                      {idea.status === "saved" && (
-                        <Badge variant="soft">salvo</Badge>
+          <>
+            {/* Filtros + contador */}
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4">
+              <div className="flex gap-1">
+                {(
+                  [
+                    { key: "all", label: "Todas" },
+                    { key: "new", label: "Novas" },
+                    { key: "saved", label: "Salvas" },
+                  ] as const
+                ).map((f) => (
+                  <button
+                    key={f.key}
+                    type="button"
+                    onClick={() => setFilter(f.key)}
+                    className={cn(
+                      "rounded-full px-3 py-1 text-xs font-medium transition",
+                      filter === f.key
+                        ? "bg-brand-50 text-brand-700"
+                        : "text-muted-foreground hover:bg-secondary"
+                    )}
+                  >
+                    {f.label}{" "}
+                    <span className="ml-1 opacity-70">({counts[f.key]})</span>
+                  </button>
+                ))}
+              </div>
+              {totalPages > 1 && (
+                <p className="text-xs text-muted-foreground">
+                  Página {currentPage} de {totalPages}
+                </p>
+              )}
+            </div>
+
+            <ul className="space-y-3">
+              {pageItems.map((idea) => (
+                <li
+                  key={idea.id}
+                  className="rounded-2xl border border-border bg-card p-5 shadow-sm transition-shadow hover:shadow-md"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="brand">{idea.relevance_score}</Badge>
+                        {idea.status === "saved" && (
+                          <Badge variant="soft">salvo</Badge>
+                        )}
+                        {idea.source_title && (
+                          <Badge variant="outline" className="text-[10px]">
+                            {idea.source_title}
+                          </Badge>
+                        )}
+                      </div>
+                      <h3 className="mt-2 font-display text-xl tracking-tight">
+                        {idea.title}
+                      </h3>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        {idea.angle}
+                      </p>
+                      {idea.why_now && (
+                        <p className="mt-2 text-xs text-brand-700">
+                          <span className="font-medium">Por que agora:</span>{" "}
+                          {idea.why_now}
+                        </p>
                       )}
-                      {idea.source_title && (
-                        <Badge variant="outline" className="text-[10px]">
-                          {idea.source_title}
-                        </Badge>
+                      {idea.source_url ? (
+                        <a
+                          href={idea.source_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-2 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          Abrir artigo <ExternalLink className="h-3 w-3" />
+                        </a>
+                      ) : (
+                        <p className="mt-2 inline-flex items-center gap-1 text-xs text-muted-foreground opacity-60">
+                          Fonte sem URL específica
+                        </p>
                       )}
                     </div>
-                    <h3 className="mt-2 font-display text-xl tracking-tight">{idea.title}</h3>
-                    <p className="mt-2 text-sm text-muted-foreground">{idea.angle}</p>
-                    {idea.why_now && (
-                      <p className="mt-2 text-xs text-brand-700">
-                        <span className="font-medium">Por que agora:</span> {idea.why_now}
-                      </p>
-                    )}
-                    {idea.source_url && (
-                      <a
-                        href={idea.source_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-2 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                      >
-                        Fonte <ExternalLink className="h-3 w-3" />
-                      </a>
-                    )}
                   </div>
-                </div>
 
-                <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => turnIntoContent(idea, "linkedin_post")}
-                  >
-                    <Wand2 className="h-3.5 w-3.5" /> Gerar post
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => turnIntoContent(idea, "article")}
-                  >
-                    Gerar artigo
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => update(idea.id, idea.status === "saved" ? "new" : "saved")}
-                  >
-                    <Bookmark className="h-3.5 w-3.5" /> {idea.status === "saved" ? "Tirar" : "Salvar"}
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="ml-auto text-muted-foreground"
-                    onClick={() => update(idea.id, "dismissed")}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" /> Descartar
-                  </Button>
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => turnIntoContent(idea, "linkedin_post")}
+                    >
+                      <Wand2 className="h-3.5 w-3.5" /> Gerar post
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => turnIntoContent(idea, "article")}
+                    >
+                      Gerar artigo
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        update(idea.id, idea.status === "saved" ? "new" : "saved")
+                      }
+                    >
+                      <Bookmark className="h-3.5 w-3.5" />{" "}
+                      {idea.status === "saved" ? "Tirar" : "Salvar"}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="ml-auto text-muted-foreground"
+                      onClick={() => update(idea.id, "dismissed")}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" /> Descartar
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            {/* Paginação */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card p-3">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" /> Anterior
+                </Button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setPage(n)}
+                      className={cn(
+                        "h-8 w-8 rounded-md text-xs font-medium transition",
+                        n === currentPage
+                          ? "bg-brand-50 text-brand-700"
+                          : "text-muted-foreground hover:bg-secondary"
+                      )}
+                    >
+                      {n}
+                    </button>
+                  ))}
                 </div>
-              </li>
-            ))}
-          </ul>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Próxima <ChevronRight className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            )}
+
+            {/* Filtro retornou vazio */}
+            {filtered.length === 0 && (
+              <p className="rounded-2xl border border-dashed border-border bg-secondary/30 p-8 text-center text-sm text-muted-foreground">
+                Nenhuma ideia nesse filtro. Tenta outro acima.
+              </p>
+            )}
+          </>
         ) : (
           !running && (
             <div className="rounded-2xl border border-dashed border-border bg-secondary/40 p-8 text-center">

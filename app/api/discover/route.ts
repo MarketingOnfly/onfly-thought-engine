@@ -117,6 +117,25 @@ export async function POST() {
     );
   }
 
+  /**
+   * Detecta URL "só homepage" — domínio sem path ou com path muito raso.
+   * Errado: https://valor.com.br, https://exame.com/, https://stratechery.com/
+   * Certo:  https://valor.com.br/empresas/agronegocio/noticia/123
+   */
+  function isHomepageUrl(url: string): boolean {
+    try {
+      const u = new URL(url);
+      const path = u.pathname.replace(/\/+$/, ""); // tira trailing slashes
+      if (!path || path === "" || path === "/") return true;
+      const segments = path.split("/").filter(Boolean);
+      // 1 segmento curto (ex: /pt, /br) também é homepage de seção
+      if (segments.length === 1 && segments[0].length <= 3) return true;
+      return false;
+    } catch {
+      return true; // URL inválida — descarta
+    }
+  }
+
   const rows = parsed.ideas
     .map((idea) => ({
       user_id: user.id,
@@ -130,7 +149,13 @@ export async function POST() {
           ? Math.max(0, Math.min(100, Math.round(idea.relevance_score)))
           : 50,
     }))
-    .filter((row) => row.title && row.angle);
+    .filter((row) => row.title && row.angle)
+    // Limpa source_url se for só homepage — UI mostra sem link em vez de mandar pra valor.com.br
+    .map((row) => ({
+      ...row,
+      source_url:
+        row.source_url && !isHomepageUrl(row.source_url) ? row.source_url : null,
+    }));
 
   if (!rows.length) {
     return NextResponse.json({ error: "Ideias incompletas." }, { status: 502 });

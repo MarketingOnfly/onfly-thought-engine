@@ -93,8 +93,8 @@ Devolva JSON puro, NADA de markdown ou prefixo. Schema:
 {
   "items": [
     {
-      "title": "título do artigo/notícia, ≤ 100 chars",
-      "url": "URL real (de uma das buscas)",
+      "title": "título exato do artigo/notícia, ≤ 100 chars",
+      "url": "URL COMPLETA do artigo específico (que web_search devolveu)",
       "source": "nome curto da fonte (ex: 'Valor', 'Exame', 'Stratechery')",
       "summary": "1-2 frases curtas em pt-BR explicando o que tem e por que importa pro líder",
       "published_at": "YYYY-MM-DD ou null se não souber"
@@ -102,9 +102,15 @@ Devolva JSON puro, NADA de markdown ou prefixo. Schema:
   ]
 }
 
-Regras:
+REGRA DURA SOBRE url:
+- Use a URL EXATA do artigo que o web_search devolveu.
+- NUNCA use só a homepage. Errado: 'https://valor.com.br'. Certo: 'https://valor.com.br/empresas/.../noticia-X.ghtml'.
+- Se você não tem a URL específica do artigo, descarte e procure outro.
+- title = título do artigo (não 'Valor Econômico'); source = nome curto do veículo.
+
+Outras regras:
 - Itens diversos — não empilhar 5 notícias sobre o mesmo assunto.
-- Pular tudo que não tem fato concreto (não inclua 'blog post genérico de tendências').
+- Pular tudo que não tem fato concreto.
 - Se uma busca não trouxer nada bom, faz outra com query diferente.`;
 
   const anthropic = getAnthropic();
@@ -148,6 +154,20 @@ Regras:
     );
   }
 
+  /** Mesma heurística do /api/discover — descarta homepages. */
+  function isHomepageUrl(url: string): boolean {
+    try {
+      const u = new URL(url);
+      const path = u.pathname.replace(/\/+$/, "");
+      if (!path || path === "" || path === "/") return true;
+      const segments = path.split("/").filter(Boolean);
+      if (segments.length === 1 && segments[0].length <= 3) return true;
+      return false;
+    } catch {
+      return true;
+    }
+  }
+
   const items: NewsItem[] = parsed.items
     .map((it) => ({
       title: String(it.title ?? "").slice(0, 200),
@@ -156,7 +176,7 @@ Regras:
       summary: String(it.summary ?? "").slice(0, 500),
       published_at: it.published_at ? String(it.published_at).slice(0, 30) : null,
     }))
-    .filter((it) => it.title && it.url);
+    .filter((it) => it.title && it.url && !isHomepageUrl(it.url));
 
   if (!items.length) {
     return NextResponse.json(
