@@ -17,8 +17,7 @@ import {
 } from "@/lib/supabase/server";
 import { isAdmin } from "@/lib/admin";
 import { Badge } from "@/components/ui/badge";
-import { formatCompact } from "@/components/charts";
-import { initials, formatDate, truncate } from "@/lib/utils";
+import { initials, formatDate, formatCompact, truncate } from "@/lib/utils";
 import {
   AUDIENCE_SEGMENTS,
   CONTENT_FORMATS,

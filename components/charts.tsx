@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@/lib/utils";
+import { cn, formatCompact } from "@/lib/utils";
 
 /**
  * Line chart com eixos, gridlines e dots. SVG puro, sem libs.
@@ -245,11 +245,7 @@ export function BarRanking({
   );
 }
 
-function formatCompact(n: number): string {
-  if (!Number.isFinite(n)) return "0";
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(Math.round(n));
-}
-
-export { formatCompact };
+// Reexporta de lib/utils pra retrocompat — charts.tsx tem "use client" e
+// importar daqui em Server Component quebra build. Use lib/utils direto
+// em Server Components.
+export { formatCompact } from "@/lib/utils";
