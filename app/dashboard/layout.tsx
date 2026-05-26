@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient, getServerUser, isAdminEmail } from "@/lib/supabase/server";
 import { NotificationBell } from "@/components/notification-bell";
 import { DashboardSidebar, MobileNav } from "@/components/dashboard-sidebar";
+import { CommandPalette } from "@/components/command-palette";
 
 export default async function DashboardLayout({
   children,
@@ -49,6 +50,9 @@ export default async function DashboardLayout({
         </div>
         {children}
       </main>
+
+      {/* Cmd+K command palette — fica disponível em qualquer página de /dashboard */}
+      <CommandPalette />
     </div>
   );
 }
