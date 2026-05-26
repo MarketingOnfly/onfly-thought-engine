@@ -39,3 +39,5 @@ next-env.d.ts
 # PDFs já extraídos pra .txt (servem só ao build local de prompts)
 pdf-extracts/
 /Tecnicas\ de\ escrita/
+
+.vercel

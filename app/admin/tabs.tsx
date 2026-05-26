@@ -6,6 +6,7 @@ import OrgDocsPanel from "./org-docs-panel";
 import CampaignsPanel from "./campaigns-panel";
 import LeadersPanel from "./leaders-panel";
 import BroadcastsPanel from "./broadcasts-panel";
+import AdminsPanel from "./admins-panel";
 
 export type LeaderLite = {
   user_id: string;
@@ -19,11 +20,13 @@ export default function AdminTabs({
   initialCampaigns,
   activeLeaders,
   leaders,
+  currentUserId,
 }: {
   initialDocs: OrgDocument[];
   initialCampaigns: Campaign[];
   activeLeaders: number;
   leaders: LeaderLite[];
+  currentUserId: string;
 }) {
   return (
     <Tabs defaultValue="leaders" className="mt-8">
@@ -34,6 +37,7 @@ export default function AdminTabs({
         </TabsTrigger>
         <TabsTrigger value="broadcasts">Avisos</TabsTrigger>
         <TabsTrigger value="docs">Guidelines ({initialDocs.length})</TabsTrigger>
+        <TabsTrigger value="admins">Admins</TabsTrigger>
       </TabsList>
 
       <TabsContent value="leaders">
@@ -54,6 +58,10 @@ export default function AdminTabs({
 
       <TabsContent value="docs">
         <OrgDocsPanel initial={initialDocs} />
+      </TabsContent>
+
+      <TabsContent value="admins">
+        <AdminsPanel currentUserId={currentUserId} />
       </TabsContent>
     </Tabs>
   );

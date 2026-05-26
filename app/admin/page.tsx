@@ -55,6 +55,7 @@ export default async function AdminHome() {
           role: (l.role as string | null) ?? "",
           area: (l.area as string | null) ?? "",
         }))}
+        currentUserId={user.id}
       />
     </div>
   );
