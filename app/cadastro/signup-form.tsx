@@ -37,11 +37,16 @@ export default function SignupForm() {
     setStatus("loading");
     try {
       const supabase = createSupabaseBrowserClient();
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
       });
       if (error) throw error;
+      // Se confirmação de email desativada, sessão já existe — redireciona direto
+      if (data.session) {
+        window.location.href = "/dashboard";
+        return;
+      }
       setStatus("success");
     } catch (err: unknown) {
       setStatus("error");
