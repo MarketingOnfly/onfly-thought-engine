@@ -397,10 +397,38 @@ function ProfilesPanel({
               className="mt-1"
             />
           </div>
-          <p className="mt-3 text-xs text-muted-foreground">
-            Hooks e estilo são extraídos automaticamente assim que você salvar.
-            Pra LinkedIn, vamos te pedir 2-3 exemplos colados (eles bloqueiam scraping).
-          </p>
+
+          {/* Aviso explícito: o que é automático vs manual */}
+          <div className="mt-4 rounded-xl border border-border bg-secondary/40 p-3 text-xs">
+            <p className="font-medium text-foreground">
+              Como o motor lê cada tipo de fonte
+            </p>
+            <ul className="mt-2 space-y-1.5 text-muted-foreground">
+              <li className="flex items-start gap-2">
+                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-600" />
+                <span>
+                  <strong className="text-foreground">
+                    Substack, blog, Medium, portal:
+                  </strong>{" "}
+                  análise automática. O motor lê o conteúdo público e extrai
+                  tom, posicionamento, temas e hooks sozinho.
+                </span>
+              </li>
+              <li className="flex items-start gap-2">
+                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+                <span>
+                  <strong className="text-foreground">
+                    Perfil pessoal do LinkedIn:
+                  </strong>{" "}
+                  o LinkedIn bloqueia leitura externa. Depois de salvar, vou
+                  te pedir pra colar 2-3 posts dessa pessoa (uma única vez —
+                  a análise vira permanente). Se essa referência também tem
+                  Substack ou blog próprio, prefere a URL do blog em vez do
+                  LinkedIn — fica tudo automático.
+                </span>
+              </li>
+            </ul>
+          </div>
           <div className="mt-3 flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
               Cancelar
