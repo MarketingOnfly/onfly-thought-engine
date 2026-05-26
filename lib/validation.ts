@@ -85,6 +85,7 @@ export const generateContentSchema = z.object({
   content_type: z.string().optional().nullable(),
   length: z.enum(["short", "medium", "long"]).optional().nullable(),
   tone_override: z.array(z.string()).optional().nullable(),
+  variations: z.number().int().min(1).max(3).optional().default(1),
 });
 
 export const reviseContentSchema = z.object({

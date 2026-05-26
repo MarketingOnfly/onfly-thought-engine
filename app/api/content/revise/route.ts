@@ -88,6 +88,14 @@ export async function POST(request: NextRequest) {
       ],
     };
 
+    // Salva a versão atual no histórico antes de sobrescrever
+    await supabase.from("draft_versions").insert({
+      content_draft_id: draft.id,
+      user_id: user.id,
+      body: currentText,
+      reason: `Antes de revisar: "${parsed.data.instructions.slice(0, 120)}"`,
+    });
+
     const { data: updated, error: updErr } = await supabase
       .from("content_drafts")
       .update({

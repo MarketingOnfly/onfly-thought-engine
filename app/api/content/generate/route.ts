@@ -7,9 +7,51 @@ import {
   buildContentUserPrompt,
 } from "@/lib/anthropic/prompts";
 import { generateContentSchema } from "@/lib/validation";
-import { CONTENT_LENGTHS } from "@/lib/style-presets";
+import { CONTENT_LENGTHS, HOOK_STYLES } from "@/lib/style-presets";
+import type { AltVersion } from "@/lib/db/types";
 
-export const maxDuration = 60;
+export const maxDuration = 90;
+
+/**
+ * Quando o líder pede mais de 1 variação, a gente força hooks distintos
+ * pra cada uma — assim as versões abrem diferente em vez de saírem
+ * variações sutis do mesmo texto.
+ *
+ * Bias 1: usa o hook escolhido pelo líder OU deixa o motor decidir.
+ * Bias 2/3: pega hooks contrastantes da lista.
+ */
+function pickHookBiases(
+  chosenHookStyle: string | null,
+  count: number
+): (string | null)[] {
+  const biases: (string | null)[] = [chosenHookStyle];
+  if (count <= 1) return biases;
+  // Hooks com personalidades bem distintas — escolhidos pra dar variedade
+  const diversityPool = [
+    "data_revelation",
+    "contradiction",
+    "story_open",
+    "confessional",
+    "common_enemy",
+    "forbidden_truth",
+  ];
+  const excluded = new Set<string>([chosenHookStyle ?? ""]);
+  for (const candidate of diversityPool) {
+    if (biases.length >= count) break;
+    if (excluded.has(candidate)) continue;
+    // Confirma que o hook existe no catálogo
+    if (!HOOK_STYLES.find((h) => h.key === candidate)) continue;
+    biases.push(candidate);
+    excluded.add(candidate);
+  }
+  return biases.slice(0, count);
+}
+
+function labelForHook(hookKey: string | null): string {
+  if (!hookKey) return "abertura livre";
+  const h = HOOK_STYLES.find((x) => x.key === hookKey);
+  return h?.label.toLowerCase() ?? hookKey;
+}
 
 export async function POST(request: NextRequest) {
   const user = await getServerUser();
@@ -32,20 +74,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const variations = parsed.data.variations ?? 1;
   const systemPrompt = buildLeaderSystemPrompt(context);
-  const userPrompt = buildContentUserPrompt({
-    format: parsed.data.format,
-    topic: parsed.data.topic,
-    brief: parsed.data.brief,
-    extraInstructions: parsed.data.extra_instructions,
-    hookStyle: parsed.data.hook_style,
-    objective: parsed.data.objective,
-    contentType: parsed.data.content_type,
-    length: parsed.data.length ?? null,
-    toneOverride: parsed.data.tone_override ?? null,
-  });
 
-  // max_tokens segue o tamanho pedido — corta antes do modelo "ficar empolgado".
   const lengthPreset = parsed.data.length
     ? CONTENT_LENGTHS.find((l) => l.key === parsed.data.length)
     : null;
@@ -54,7 +85,7 @@ export async function POST(request: NextRequest) {
       ? lengthPreset.maxTokensPost
       : lengthPreset.maxTokensArticle
     : parsed.data.format === "linkedin_post"
-      ? 1400 // default = médio
+      ? 1400
       : 4000;
 
   const supabase = await createSupabaseServerClient();
@@ -74,6 +105,7 @@ export async function POST(request: NextRequest) {
         hook_style: parsed.data.hook_style ?? null,
         objective: parsed.data.objective ?? null,
         content_type: parsed.data.content_type ?? null,
+        variations,
       },
     })
     .select()
@@ -87,31 +119,86 @@ export async function POST(request: NextRequest) {
   }
 
   const draftId = insertRes.data.id;
+  const hookBiases = pickHookBiases(parsed.data.hook_style ?? null, variations);
 
   try {
     const anthropic = getAnthropic();
-    const response = await anthropic.messages.create({
-      model: MODEL,
-      max_tokens: maxTokens,
-      system: [
-        {
-          type: "text",
-          text: systemPrompt,
-          cache_control: { type: "ephemeral" },
-        },
-      ],
-      messages: [{ role: "user", content: userPrompt }],
+
+    // N calls em paralelo, cada um com hook bias diferente
+    const calls = hookBiases.map(async (hookKey) => {
+      const userPrompt = buildContentUserPrompt({
+        format: parsed.data.format,
+        topic: parsed.data.topic,
+        brief: parsed.data.brief,
+        extraInstructions: parsed.data.extra_instructions,
+        hookStyle: hookKey,
+        objective: parsed.data.objective,
+        contentType: parsed.data.content_type,
+        length: parsed.data.length ?? null,
+        toneOverride: parsed.data.tone_override ?? null,
+      });
+
+      const response = await anthropic.messages.create({
+        model: MODEL,
+        max_tokens: maxTokens,
+        system: [
+          {
+            type: "text",
+            text: systemPrompt,
+            cache_control: { type: "ephemeral" },
+          },
+        ],
+        messages: [{ role: "user", content: userPrompt }],
+      });
+
+      const text = response.content
+        .filter((b) => b.type === "text")
+        .map((b) => (b as { text: string }).text)
+        .join("\n")
+        .trim();
+
+      return { hookKey, text };
     });
 
-    const text = response.content
-      .filter((b) => b.type === "text")
-      .map((b) => (b as { text: string }).text)
-      .join("\n")
-      .trim();
+    const settled = await Promise.allSettled(calls);
+    const successful = settled
+      .map((r) => (r.status === "fulfilled" ? r.value : null))
+      .filter((x): x is { hookKey: string | null; text: string } => !!x && !!x.text);
+
+    if (!successful.length) {
+      const reason = settled.find((r) => r.status === "rejected") as
+        | PromiseRejectedResult
+        | undefined;
+      throw new Error(
+        reason?.reason instanceof Error
+          ? reason.reason.message
+          : "Todas as gerações falharam."
+      );
+    }
+
+    // Primeira chamada vira o draft principal. Outras viram alt_versions.
+    const primary = successful[0];
+    const alts: AltVersion[] = successful.slice(1).map((s, i) => ({
+      id: crypto.randomUUID(),
+      label: `Versão ${String.fromCharCode(66 + i)} — ${labelForHook(s.hookKey)}`, // B, C, D...
+      body: s.text,
+      generated_at: new Date().toISOString(),
+    }));
+
+    // Salva também a versão A no histórico (pra restaurar depois)
+    await supabase.from("draft_versions").insert({
+      content_draft_id: draftId,
+      user_id: user.id,
+      body: primary.text,
+      reason: `Geração inicial — Versão A (${labelForHook(primary.hookKey)})`,
+    });
 
     const { data: updated, error: updErr } = await supabase
       .from("content_drafts")
-      .update({ draft_markdown: text })
+      .update({
+        draft_markdown: primary.text,
+        alt_versions: alts,
+      })
       .eq("id", draftId)
       .select()
       .single();
@@ -136,4 +223,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

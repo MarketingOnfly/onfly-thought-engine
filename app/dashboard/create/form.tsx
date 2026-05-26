@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  AlertCircle,
   ChevronDown,
   FileText,
   Linkedin,
@@ -60,8 +62,35 @@ export default function CreateForm({
   const [calibrating, setCalibrating] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [variations, setVariations] = useState<1 | 2 | 3>(1);
+  const [overlap, setOverlap] = useState<{
+    matches: { id: string; topic: string; created_at: string; shared: number }[];
+    total: number;
+  } | null>(null);
 
   const ideaReady = idea.trim().length >= 8;
+
+  // Detecta assunto similar a posts dos últimos 30 dias (debounce 600ms)
+  useEffect(() => {
+    if (!ideaReady) {
+      setOverlap(null);
+      return;
+    }
+    const handle = setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/content/check-overlap?topic=${encodeURIComponent(idea.slice(0, 200))}`
+        );
+        if (res.ok) {
+          const data = await res.json();
+          setOverlap(data);
+        }
+      } catch {
+        // silencioso
+      }
+    }, 600);
+    return () => clearTimeout(handle);
+  }, [idea, ideaReady]);
 
   async function submit() {
     if (!ideaReady) return;
@@ -91,6 +120,7 @@ export default function CreateForm({
         content_type: contentType,
         length,
         tone_override: toneOverride.length ? toneOverride : null,
+        variations,
       }),
     });
     setBusy(false);
@@ -182,7 +212,72 @@ export default function CreateForm({
               </p>
             </div>
           </div>
+
+          {/* Seletor de variações */}
+          <div className="mt-5 border-t border-border pt-5">
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+              Quantas versões gerar
+            </Label>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              {[1, 2, 3].map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setVariations(n as 1 | 2 | 3)}
+                  className={cn(
+                    "rounded-xl border px-3 py-2 text-center text-xs font-medium transition",
+                    variations === n
+                      ? "border-brand-500 bg-brand-50/60 text-brand-700"
+                      : "border-border bg-background text-muted-foreground hover:bg-secondary"
+                  )}
+                >
+                  {n === 1 ? "1 versão" : `${n} versões`}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              {variations === 1
+                ? "Padrão — o motor gera uma versão e você revisa."
+                : `O motor gera ${variations} versões com aberturas distintas em paralelo. Você escolhe ou mistura. Demora ${variations}x mais.`}
+            </p>
+          </div>
         </section>
+
+        {/* Aviso de assunto repetido */}
+        {overlap && overlap.total > 0 && (
+          <section className="rounded-2xl border border-amber-300 bg-amber-50/60 p-4 text-xs">
+            <div className="flex items-start gap-2 text-amber-900">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="font-medium">
+                  Você já tem {overlap.total} conteúdo{overlap.total === 1 ? "" : "s"} parecido{overlap.total === 1 ? "" : "s"} nos últimos 30 dias
+                </p>
+                <ul className="mt-2 space-y-1.5">
+                  {overlap.matches.slice(0, 3).map((m) => (
+                    <li key={m.id} className="flex items-center justify-between gap-2">
+                      <Link
+                        href={`/dashboard/content/${m.id}`}
+                        className="truncate hover:underline"
+                      >
+                        {m.topic}
+                      </Link>
+                      <span className="shrink-0 text-[10px] opacity-70">
+                        {new Date(m.created_at).toLocaleDateString("pt-BR", {
+                          day: "2-digit",
+                          month: "short",
+                        })}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2 opacity-70">
+                  Tem certeza que quer escrever esse de novo? Considera trocar de
+                  ângulo ou pilar.
+                </p>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* CALIBRAR — colapsado por default. Reduz pressão de decidir tudo. */}
         <section className="rounded-2xl border border-border bg-card shadow-sm">

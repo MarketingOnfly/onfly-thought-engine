@@ -54,6 +54,29 @@ export interface ContentFeedback {
   created_at: string;
 }
 
+export interface AltVersion {
+  id: string;
+  label: string; // ex: "Versão A (hook contrarian)"
+  body: string;
+  generated_at: string;
+}
+
+export interface StyleScore {
+  overall: number; // 0-100
+  matches: string[]; // bullets do que casou
+  gaps: string[]; // bullets do que escapou
+  computed_at: string;
+}
+
+export interface DraftVersion {
+  id: string;
+  content_draft_id: string;
+  user_id: string;
+  body: string;
+  reason: string | null;
+  created_at: string;
+}
+
 export interface NewsItem {
   title: string;
   url: string;
@@ -134,6 +157,8 @@ export interface ContentDraft {
   meta: Record<string, unknown>;
   scheduled_at: string | null;
   tags: string[];
+  alt_versions: AltVersion[];
+  style_score: StyleScore | null;
   created_at: string;
   updated_at: string;
 }

@@ -1,7 +1,90 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createSupabaseServerClient, getServerUser } from "@/lib/supabase/server";
+import {
+  createSupabaseAdminClient,
+  createSupabaseServerClient,
+  getServerUser,
+} from "@/lib/supabase/server";
+import { learnFromFeedback } from "@/lib/anthropic/learn-from-feedback";
 
 export const runtime = "nodejs";
+export const maxDuration = 120;
+
+/**
+ * Pega posts importados que viraram top performers (>2x a média do líder),
+ * compara contra os de baixa performance e atualiza learned_preferences.
+ * Idempotente — só roda em métricas com learned_from = false.
+ */
+async function learnFromHighPerformers(userId: string) {
+  let admin;
+  try {
+    admin = createSupabaseAdminClient();
+  } catch {
+    return; // service_role ausente — skip
+  }
+
+  // Métricas do líder ainda não aprendidas, com draft vinculado
+  const { data: metrics } = await admin
+    .from("post_metrics")
+    .select(
+      "id, impressions, likes, comments, reposts, content_draft_id, content_draft:content_drafts(topic, draft_markdown)"
+    )
+    .eq("user_id", userId)
+    .eq("learned_from", false)
+    .not("content_draft_id", "is", null)
+    .order("impressions", { ascending: false })
+    .limit(50);
+  if (!metrics?.length) return;
+
+  // Calcula média do líder pra identificar outliers
+  const allImpressions = metrics.map((m) => m.impressions ?? 0);
+  const avg =
+    allImpressions.reduce((a, b) => a + b, 0) / Math.max(1, allImpressions.length);
+  if (avg === 0) return;
+
+  const highPerformers = metrics.filter(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (m: any) => m.impressions > avg * 2 && m.content_draft?.draft_markdown
+  );
+  if (!highPerformers.length) return;
+
+  // Trata cada high-performer como um "feedback" rating 5
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const samples = (highPerformers as any[]).map((m) => ({
+    rating: 5,
+    comment: `Esse post bateu ${(m.impressions / avg).toFixed(1)}x a média de impressões (${m.impressions} vs ${Math.round(avg)} médio). Curtidas: ${m.likes}, comentários: ${m.comments}, reposts: ${m.reposts}.`,
+    draft_topic: m.content_draft?.topic ?? "",
+    draft_text: m.content_draft?.draft_markdown ?? null,
+    created_at: new Date().toISOString(),
+  }));
+
+  const preferences = await learnFromFeedback(samples);
+  if (preferences) {
+    // Pega learned_preferences atuais e MERGE (não sobrescreve o feedback manual)
+    const { data: profile } = await admin
+      .from("leader_profiles")
+      .select("learned_preferences")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    const existing = profile?.learned_preferences ?? "";
+    const next = existing
+      ? `${existing}\n\n# Padrões automáticos (alto desempenho):\n${preferences}`.slice(
+          0,
+          3000
+        )
+      : `# Padrões automáticos (alto desempenho):\n${preferences}`;
+
+    await admin
+      .from("leader_profiles")
+      .update({ learned_preferences: next })
+      .eq("user_id", userId);
+  }
+
+  // Marca como aprendidos pra não reprocessar
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ids = highPerformers.map((m: any) => m.id);
+  await admin.from("post_metrics").update({ learned_from: true }).in("id", ids);
+}
 
 /**
  * Bulk import de métricas de LinkedIn Analytics.
@@ -495,6 +578,12 @@ export async function POST(request: NextRequest) {
 
   const { data, error } = await supabase.from("post_metrics").insert(inserts).select();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Aprendizado automático em background — pega posts de alto desempenho
+  // (impressões > 2x a média do líder) e extrai padrões pra learned_preferences.
+  void learnFromHighPerformers(user.id).catch((err) =>
+    console.error("[metrics] auto-learn failed", err)
+  );
 
   return NextResponse.json({
     inserted: data?.length ?? 0,
