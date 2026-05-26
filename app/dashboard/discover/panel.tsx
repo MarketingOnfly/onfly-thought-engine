@@ -1,11 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bookmark, Compass, ExternalLink, RefreshCw, Trash2, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { ReferenceLink, TopicSuggestion } from "@/lib/db/types";
+import { apiFetch } from "@/lib/client-fetch";
+
+const STAGES = [
+  { until: 8, label: "Lendo suas fontes…" },
+  { until: 15, label: "Extraindo o que importa…" },
+  { until: 30, label: "Cruzando com seu posicionamento…" },
+  { until: 60, label: "Pensando com mais cuidado…" },
+  { until: 999, label: "Quase lá — finalizando ideias…" },
+];
 
 export default function DiscoverPanel({
   initialIdeas,
@@ -18,20 +27,40 @@ export default function DiscoverPanel({
   const [ideas, setIdeas] = useState(initialIdeas);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [elapsed, setElapsed] = useState(0);
+  const startedAt = useRef<number | null>(null);
+
+  // tick a 1s timer while running
+  useEffect(() => {
+    if (!running) {
+      setElapsed(0);
+      startedAt.current = null;
+      return;
+    }
+    startedAt.current = Date.now();
+    const id = setInterval(() => {
+      if (startedAt.current) {
+        setElapsed(Math.floor((Date.now() - startedAt.current) / 1000));
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [running]);
+
+  const stageLabel =
+    STAGES.find((s) => elapsed < s.until)?.label ?? STAGES[STAGES.length - 1].label;
 
   async function run() {
     setRunning(true);
     setError(null);
-    try {
-      const res = await fetch("/api/discover", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Erro");
-      setIdeas([...(data.ideas ?? []), ...ideas]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro");
-    } finally {
-      setRunning(false);
+    const res = await apiFetch<{ ideas: TopicSuggestion[] }>("/api/discover", {
+      method: "POST",
+    });
+    setRunning(false);
+    if (!res.ok) {
+      setError(res.error);
+      return;
     }
+    setIdeas([...(res.data.ideas ?? []), ...ideas]);
   }
 
   async function update(id: string, status: TopicSuggestion["status"]) {
@@ -61,24 +90,39 @@ export default function DiscoverPanel({
   return (
     <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_300px]">
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card p-5">
-          <div>
-            <h2 className="font-display text-xl tracking-tight">Rodar descoberta</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {sources.length} fontes na sua biblioteca. O motor lê até 8 por rodada.
-            </p>
+        <div className="rounded-2xl border border-border bg-card p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="font-display text-xl tracking-tight">Rodar descoberta</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {sources.length} fontes na sua biblioteca. O motor processa as 5 mais recentes
+                por rodada.
+              </p>
+            </div>
+            <Button variant="primary" onClick={run} disabled={running || !sources.length}>
+              {running ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" /> {elapsed}s
+                </>
+              ) : (
+                <>
+                  <Compass className="h-4 w-4" /> Gerar ideias
+                </>
+              )}
+            </Button>
           </div>
-          <Button variant="primary" onClick={run} disabled={running || !sources.length}>
-            {running ? (
-              <>
-                <RefreshCw className="h-4 w-4 animate-spin" /> Lendo fontes...
-              </>
-            ) : (
-              <>
-                <Compass className="h-4 w-4" /> Gerar ideias
-              </>
-            )}
-          </Button>
+          {running && (
+            <div className="mt-4 rounded-xl border border-brand-200 bg-brand-50/50 p-4">
+              <div className="flex items-center gap-3 text-sm">
+                <RefreshCw className="h-4 w-4 animate-spin text-brand-600" />
+                <span className="font-medium text-brand-800">{stageLabel}</span>
+                <span className="ml-auto font-mono text-xs text-brand-700">{elapsed}s</span>
+              </div>
+              <p className="mt-2 text-xs text-brand-700">
+                Demora ~30s. Vale a pena — o motor pensa mais antes de responder.
+              </p>
+            </div>
+          )}
         </div>
 
         {!sources.length && (

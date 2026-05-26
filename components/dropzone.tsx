@@ -1,0 +1,205 @@
+"use client";
+
+import { useCallback, useId, useRef, useState } from "react";
+import { CheckCircle2, FileText, Upload, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import type { LeaderDocument } from "@/lib/db/types";
+
+interface UploadState {
+  name: string;
+  size: number;
+  status: "uploading" | "done" | "error";
+  error?: string;
+}
+
+const ACCEPTED = ".pdf,.docx,.txt,.md,.markdown";
+const ACCEPTED_HINT = "PDF · DOCX · TXT · MD";
+
+export function Dropzone({
+  onUploaded,
+  className,
+  compact = false,
+}: {
+  onUploaded?: (items: LeaderDocument[]) => void;
+  className?: string;
+  compact?: boolean;
+}) {
+  const [items, setItems] = useState<UploadState[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const inputId = useId();
+
+  const handleFiles = useCallback(
+    async (files: FileList | File[]) => {
+      const arr = Array.from(files);
+      if (!arr.length) return;
+
+      // optimistic UI state
+      const initial: UploadState[] = arr.map((f) => ({
+        name: f.name,
+        size: f.size,
+        status: "uploading",
+      }));
+      setItems((prev) => [...prev, ...initial]);
+
+      const formData = new FormData();
+      for (const f of arr) formData.append("files", f);
+
+      try {
+        const res = await fetch("/api/documents/upload", {
+          method: "POST",
+          body: formData,
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          setItems((prev) =>
+            prev.map((it) =>
+              initial.find((i) => i.name === it.name && it.status === "uploading")
+                ? { ...it, status: "error", error: data.error ?? "Falha no upload" }
+                : it
+            )
+          );
+          return;
+        }
+
+        const createdNames: string[] = (data.items ?? []).map(
+          (it: { name: string }) => it.name
+        );
+        const failedMap: Record<string, string> = Object.fromEntries(
+          (data.failed ?? []).map((it: { name: string; error: string }) => [it.name, it.error])
+        );
+
+        setItems((prev) =>
+          prev.map((it) => {
+            if (it.status !== "uploading") return it;
+            if (createdNames.includes(it.name)) {
+              return { ...it, status: "done" };
+            }
+            if (failedMap[it.name]) {
+              return { ...it, status: "error", error: failedMap[it.name] };
+            }
+            return it;
+          })
+        );
+
+        if (data.items?.length && onUploaded) {
+          onUploaded(data.items);
+        }
+      } catch (err) {
+        setItems((prev) =>
+          prev.map((it) =>
+            initial.find((i) => i.name === it.name && it.status === "uploading")
+              ? {
+                  ...it,
+                  status: "error",
+                  error: err instanceof Error ? err.message : "Erro",
+                }
+              : it
+          )
+        );
+      }
+    },
+    [onUploaded]
+  );
+
+  function onInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    if (e.target.files) {
+      void handleFiles(e.target.files);
+      e.target.value = "";
+    }
+  }
+
+  function onDrop(e: React.DragEvent<HTMLLabelElement>) {
+    e.preventDefault();
+    setDragging(false);
+    if (e.dataTransfer.files) void handleFiles(e.dataTransfer.files);
+  }
+
+  function onDragOver(e: React.DragEvent<HTMLLabelElement>) {
+    e.preventDefault();
+    setDragging(true);
+  }
+
+  function clearDone() {
+    setItems((prev) => prev.filter((it) => it.status !== "done"));
+  }
+
+  return (
+    <div className={cn("space-y-3", className)}>
+      <label
+        htmlFor={inputId}
+        onDrop={onDrop}
+        onDragOver={onDragOver}
+        onDragLeave={() => setDragging(false)}
+        className={cn(
+          "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border bg-secondary/30 text-center transition-colors",
+          compact ? "p-6" : "p-10",
+          dragging && "border-brand-500 bg-brand-50/60"
+        )}
+      >
+        <input
+          ref={inputRef}
+          id={inputId}
+          type="file"
+          multiple
+          accept={ACCEPTED}
+          onChange={onInputChange}
+          className="hidden"
+        />
+        <Upload
+          className={cn(
+            "text-brand-600 transition-transform",
+            compact ? "h-6 w-6" : "h-10 w-10",
+            dragging && "scale-110"
+          )}
+        />
+        <p className={cn("font-medium", compact ? "text-sm" : "text-base")}>
+          {dragging ? "Solta aqui" : "Arraste arquivos ou clica pra escolher"}
+        </p>
+        <p className="text-xs text-muted-foreground">{ACCEPTED_HINT} · máx 15MB cada</p>
+      </label>
+
+      {items.length > 0 && (
+        <ul className="space-y-2">
+          {items.map((it, idx) => (
+            <li
+              key={`${it.name}-${idx}`}
+              className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-2.5 text-sm"
+            >
+              <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1 truncate">{it.name}</span>
+              <span className="text-xs text-muted-foreground">
+                {humanSize(it.size)}
+              </span>
+              {it.status === "uploading" && (
+                <span className="font-mono text-xs text-brand-700">enviando…</span>
+              )}
+              {it.status === "done" && (
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-brand-600" />
+              )}
+              {it.status === "error" && (
+                <span className="text-xs text-destructive">{it.error ?? "erro"}</span>
+              )}
+            </li>
+          ))}
+          {items.some((it) => it.status === "done") && (
+            <button
+              type="button"
+              onClick={clearDone}
+              className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-3 w-3" /> Limpar concluídos
+            </button>
+          )}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function humanSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}

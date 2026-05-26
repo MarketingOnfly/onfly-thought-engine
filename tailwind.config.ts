@@ -54,18 +54,30 @@ const config: Config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        // Onfly brand — design system oficial. Primary: #009EFB.
         brand: {
-          50: "#f3f1ff",
-          100: "#e9e5ff",
-          200: "#d5cdff",
-          300: "#b6a7ff",
-          400: "#9377ff",
-          500: "#7549ff",
-          600: "#6534e8",
-          700: "#5728c4",
-          800: "#48249f",
-          900: "#3c2380",
-          950: "#241355",
+          50: "#e6f6ff",
+          100: "#c2e8ff",
+          200: "#8ad5ff",
+          300: "#52c2ff",
+          400: "#22afff",
+          500: "#009efb", // âncora oficial Onfly
+          600: "#0083d8",
+          700: "#0068ad",
+          800: "#0a4f82",
+          900: "#0f3163", // navy oficial Onfly
+          950: "#2a035c", // purple oficial Onfly
+        },
+        // Cores semânticas Onfly (do design system oficial)
+        onfly: {
+          green: "#34e098",   // sucesso, métricas positivas
+          orange: "#ff8811",  // atenção, CTAs, warnings
+          navy: "#0f3163",    // deep backgrounds
+          purple: "#2a035c",  // premium accents
+          dark: "#323232",    // texto em fundo claro
+          light: "#f1f3f3",   // texto em fundo escuro
+          cyan: "#06b6d4",    // info secundário
+          muted: "#8fa4c4",   // labels, placeholders
         },
       },
       borderRadius: {

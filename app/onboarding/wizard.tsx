@@ -2,16 +2,15 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Check, Linkedin, Sparkles } from "lucide-react";
+import { Check, Linkedin, Sparkles, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
-import { Badge } from "@/components/ui/badge";
-import type { LeaderProfile } from "@/lib/db/types";
-import StepReferences from "./step-references";
-import StepDocuments from "./step-documents";
+import { Dropzone } from "@/components/dropzone";
+import { PresetOrCustom } from "@/components/preset-or-custom";
+import { ROLE_PRESETS, AREA_PRESETS } from "@/lib/style-presets";
+import type { LeaderProfile, ReferenceLink } from "@/lib/db/types";
 
 const TONE_TRAITS = [
   "Direto",
@@ -26,16 +25,17 @@ const TONE_TRAITS = [
   "Otimista mas realista",
 ];
 
-const TONE_AVOID = [
-  "Jargão americano cru",
-  '"No fim do dia"',
-  "Hooks com emoji",
-  "Listas de '3 lições'",
-  "Tom motivacional",
-  "Auto-elogio explícito",
-  "Em dashes decorativos",
-  "Frases longas demais",
-];
+function detectLinkKind(url: string): ReferenceLink["kind"] {
+  const u = url.toLowerCase();
+  if (u.includes("substack.com")) return "substack";
+  if (u.includes("medium.com")) return "blog";
+  if (u.includes("youtube.com") || u.includes("youtu.be")) return "youtube";
+  if (u.includes("spotify.com") || u.includes("podcast")) return "podcast";
+  if (u.match(/\b(newsletter|news\.)/)) return "newsletter";
+  if (u.includes("linkedin.com")) return "other"; // linkedin de pessoa vai pra reference_profiles
+  if (u.match(/portal|exame|forbes|propmark|meioemensagem|valor/i)) return "portal";
+  return "blog";
+}
 
 export default function OnboardingWizard({
   initialProfile,
@@ -45,9 +45,9 @@ export default function OnboardingWizard({
   userEmail: string | null;
 }) {
   const router = useRouter();
-  const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [stage, setStage] = useState<string>("");
 
   const [form, setForm] = useState({
     full_name: initialProfile?.full_name ?? "",
@@ -56,93 +56,128 @@ export default function OnboardingWizard({
     linkedin_url: initialProfile?.linkedin_url ?? "",
     target_audience: initialProfile?.target_audience ?? "",
     tone_traits: initialProfile?.tone_traits ?? [],
-    tone_avoid: initialProfile?.tone_avoid ?? [],
     tone_examples: initialProfile?.tone_examples ?? "",
     main_objective: initialProfile?.main_objective ?? "",
-    custom_briefing: initialProfile?.custom_briefing ?? "",
   });
 
-  const totalSteps = 5;
-  const progress = (step / totalSteps) * 100;
+  // textareas with URLs/profiles, one per line
+  const [refLinksRaw, setRefLinksRaw] = useState("");
+  const [refProfilesRaw, setRefProfilesRaw] = useState("");
 
-  async function saveProfile(opts: { finish?: boolean } = {}) {
-    setSaving(true);
+  function toggleTrait(value: string) {
+    setForm((prev) => ({
+      ...prev,
+      tone_traits: prev.tone_traits.includes(value)
+        ? prev.tone_traits.filter((v) => v !== value)
+        : [...prev.tone_traits, value],
+    }));
+  }
+
+  function validate(): string | null {
+    if (form.full_name.trim().length < 2) return "Nome é obrigatório.";
+    if (form.role.trim().length < 2) return "Cargo é obrigatório.";
+    if (form.area.trim().length < 2) return "Área é obrigatória.";
+    if (form.target_audience.trim().length < 20)
+      return "Descreve sua audiência em pelo menos uma frase completa.";
+    if (!form.tone_traits.length) return "Escolha ao menos 1 traço de tom.";
+    if (form.main_objective.trim().length < 20)
+      return "Descreve seu objetivo em pelo menos uma frase.";
+    return null;
+  }
+
+  async function finish() {
     setError(null);
+    const v = validate();
+    if (v) {
+      setError(v);
+      return;
+    }
+    setSaving(true);
     try {
-      const res = await fetch("/api/profile", {
+      // 1. save profile (and mark onboarding_completed)
+      setStage("Salvando perfil…");
+      const profileRes = await fetch("/api/profile", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           ...form,
-          linkedin_url: form.linkedin_url?.trim() || null,
-          tone_examples: form.tone_examples?.trim() || null,
-          custom_briefing: form.custom_briefing?.trim() || null,
-          finish_onboarding: opts.finish ?? false,
+          linkedin_url: form.linkedin_url.trim() || null,
+          tone_examples: form.tone_examples.trim() || null,
+          tone_avoid: [],
+          custom_briefing: null,
+          finish_onboarding: true,
         }),
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? "Erro ao salvar");
+      if (!profileRes.ok) {
+        const data = await profileRes.json().catch(() => ({}));
+        throw new Error(data.error ?? "Falha ao salvar perfil.");
       }
+
+      // 2. ref profiles (parse lines as "Name | URL" or just URL)
+      const refProfileLines = refProfilesRaw
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean);
+
+      if (refProfileLines.length) {
+        setStage(`Salvando ${refProfileLines.length} perfis de referência…`);
+        await Promise.allSettled(
+          refProfileLines.map(async (line) => {
+            const [namePart, urlPart] = splitNameUrl(line);
+            if (!urlPart) return;
+            await fetch("/api/references/profiles", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                name: namePart || urlPart.replace(/^https?:\/\//, "").split("/")[0],
+                url: urlPart,
+                why_relevant: null,
+                hook_examples: null,
+              }),
+            });
+          })
+        );
+      }
+
+      // 3. ref links (one URL per line, auto-detect kind)
+      const refLinkLines = refLinksRaw
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean);
+
+      if (refLinkLines.length) {
+        setStage(`Salvando ${refLinkLines.length} fontes…`);
+        await Promise.allSettled(
+          refLinkLines.map(async (line) => {
+            const [titlePart, urlPart] = splitNameUrl(line);
+            if (!urlPart) return;
+            await fetch("/api/references/links", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                title:
+                  titlePart ||
+                  urlPart
+                    .replace(/^https?:\/\//, "")
+                    .replace(/^www\./, "")
+                    .split("/")[0],
+                url: urlPart,
+                kind: detectLinkKind(urlPart),
+                notes: null,
+              }),
+            });
+          })
+        );
+      }
+
+      setStage("Tudo certo. Indo pro dashboard…");
+      router.push("/dashboard");
+      router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao salvar");
-      throw err;
+      setError(err instanceof Error ? err.message : "Erro");
     } finally {
       setSaving(false);
     }
-  }
-
-  async function handleNext() {
-    setError(null);
-    try {
-      if (step === 1) {
-        if (!form.full_name.trim() || !form.role.trim() || !form.area.trim()) {
-          setError("Nome, cargo e área são obrigatórios.");
-          return;
-        }
-      }
-      if (step === 2) {
-        if (form.target_audience.trim().length < 20) {
-          setError("Descreve a audiência com pelo menos uma frase completa.");
-          return;
-        }
-      }
-      if (step === 3) {
-        if (!form.tone_traits.length) {
-          setError("Escolhe ao menos 1 traço de tom.");
-          return;
-        }
-        if (form.main_objective.trim().length < 20) {
-          setError("Descreve o objetivo com pelo menos uma frase.");
-          return;
-        }
-        await saveProfile();
-      }
-      setStep((s) => Math.min(s + 1, totalSteps));
-    } catch {
-      // already shown
-    }
-  }
-
-  async function handleFinish() {
-    try {
-      await saveProfile({ finish: true });
-      router.push("/dashboard");
-      router.refresh();
-    } catch {
-      // shown
-    }
-  }
-
-  function toggle(field: "tone_traits" | "tone_avoid", value: string) {
-    setForm((prev) => {
-      const arr = prev[field];
-      const exists = arr.includes(value);
-      return {
-        ...prev,
-        [field]: exists ? arr.filter((v) => v !== value) : [...arr, value],
-      };
-    });
   }
 
   return (
@@ -151,246 +186,273 @@ export default function OnboardingWizard({
         <div className="absolute -top-20 left-1/2 h-[420px] w-[420px] -translate-x-1/2 rounded-full bg-brand-200/40 blur-3xl" />
       </div>
 
-      <div className="mx-auto max-w-2xl">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 font-display text-lg tracking-tight">
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white">
-              <Sparkles className="h-4 w-4" />
-            </span>
-            Onboarding
-          </div>
-          <Badge variant="soft">
-            Passo {step} de {totalSteps}
-          </Badge>
-        </div>
+      <div className="mx-auto max-w-3xl">
+        <header className="flex items-center gap-2 font-display text-lg tracking-tight">
+          <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white">
+            <Sparkles className="h-4 w-4" />
+          </span>
+          Onboarding
+        </header>
 
-        <Progress value={progress} className="mt-6" />
+        <div className="mt-6 rounded-2xl border border-border bg-card p-8 shadow-sm">
+          <h1 className="font-display text-3xl tracking-tight md:text-4xl">
+            Vamos te conhecer rapidamente
+          </h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Tudo aqui alimenta o motor. Quanto mais específico, menos genérico fica o conteúdo
+            depois. Você pode editar tudo no `/dashboard/profile`.
+          </p>
+          {userEmail && (
+            <p className="mt-3 text-xs text-muted-foreground">
+              Logado como <span className="font-mono">{userEmail}</span>
+            </p>
+          )}
 
-        <div className="mt-8 rounded-2xl border border-border bg-card p-8 shadow-sm">
-          {step === 1 && (
-            <div className="space-y-6 animate-fade-up">
+          {/* Section 1: identidade */}
+          <Section title="Quem você é">
+            <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <h2 className="font-display text-3xl tracking-tight">
-                  Vamos conhecer você
-                </h2>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Esses dados ancoram o motor. Nada que você escreva aqui aparece textualmente
-                  no conteúdo final.
-                </p>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <Label htmlFor="full_name">Nome completo</Label>
-                  <Input
-                    id="full_name"
-                    value={form.full_name}
-                    onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-                    placeholder="Ex: Vinicius Lima"
-                    className="mt-2"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="role">Cargo</Label>
-                  <Input
-                    id="role"
-                    value={form.role}
-                    onChange={(e) => setForm({ ...form, role: e.target.value })}
-                    placeholder="Ex: CMO"
-                    className="mt-2"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <Label htmlFor="area">Área</Label>
+                <Label htmlFor="full_name">Nome completo</Label>
                 <Input
-                  id="area"
-                  value={form.area}
-                  onChange={(e) => setForm({ ...form, area: e.target.value })}
-                  placeholder="Ex: Marketing, Produto, Engenharia, Operações"
+                  id="full_name"
+                  value={form.full_name}
+                  onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+                  placeholder="Ex: Vinicius Lima"
                   className="mt-2"
                 />
               </div>
-
+              <div>
+                <Label htmlFor="role">Cargo</Label>
+                <div className="mt-2">
+                  <PresetOrCustom
+                    presets={ROLE_PRESETS}
+                    value={form.role}
+                    onChange={(v) => setForm({ ...form, role: v })}
+                    placeholderSelect="Escolha seu cargo"
+                    placeholderInput="Ex: Diretor de Receita"
+                  />
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="area">Área</Label>
+                <div className="mt-2">
+                  <PresetOrCustom
+                    presets={AREA_PRESETS}
+                    value={form.area}
+                    onChange={(v) => setForm({ ...form, area: v })}
+                    placeholderSelect="Escolha sua área"
+                    placeholderInput="Ex: Inovação"
+                  />
+                </div>
+              </div>
               <div>
                 <Label htmlFor="linkedin_url" className="flex items-center gap-2">
-                  <Linkedin className="h-3.5 w-3.5" /> LinkedIn
+                  <Linkedin className="h-3.5 w-3.5" /> LinkedIn (opcional)
                 </Label>
                 <Input
                   id="linkedin_url"
-                  value={form.linkedin_url ?? ""}
+                  value={form.linkedin_url}
                   onChange={(e) => setForm({ ...form, linkedin_url: e.target.value })}
-                  placeholder="https://www.linkedin.com/in/seu-perfil"
+                  placeholder="https://www.linkedin.com/in/..."
                   className="mt-2"
                 />
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Opcional. Ajuda o motor a entender seu histórico público.
-                </p>
               </div>
-
-              {userEmail && (
-                <p className="text-xs text-muted-foreground">
-                  Logado como <span className="font-mono">{userEmail}</span>
-                </p>
-              )}
             </div>
-          )}
+          </Section>
 
-          {step === 2 && (
-            <div className="space-y-6 animate-fade-up">
-              <div>
-                <h2 className="font-display text-3xl tracking-tight">
-                  Para quem você escreve?
-                </h2>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Quanto mais específico, melhor. Audiência genérica gera conteúdo genérico.
-                </p>
-              </div>
-
+          {/* Section 2: audiência + objetivo */}
+          <Section title="Pra quem você fala — e por quê">
+            <div className="grid gap-4">
               <div>
                 <Label htmlFor="target_audience">Audiência-alvo</Label>
                 <Textarea
                   id="target_audience"
                   value={form.target_audience}
                   onChange={(e) => setForm({ ...form, target_audience: e.target.value })}
-                  placeholder="Ex: Heads de finanças e de operações de empresas brasileiras com 500+ funcionários que ainda tratam viagem corporativa como custo, e não como dado."
-                  rows={6}
-                  className="mt-2"
-                />
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Pense: cargo + porte + recorte + dor latente.
-                </p>
-              </div>
-            </div>
-          )}
-
-          {step === 3 && (
-            <div className="space-y-8 animate-fade-up">
-              <div>
-                <h2 className="font-display text-3xl tracking-tight">Tom e objetivo</h2>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  O motor usa esses sinais para calibrar cada frase.
-                </p>
-              </div>
-
-              <div>
-                <Label>Traços do seu tom (escolha 2-5)</Label>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {TONE_TRAITS.map((t) => {
-                    const active = form.tone_traits.includes(t);
-                    return (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() => toggle("tone_traits", t)}
-                        className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                          active
-                            ? "border-brand-500 bg-brand-500 text-white"
-                            : "border-border bg-background hover:bg-secondary"
-                        }`}
-                      >
-                        {t}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div>
-                <Label>O que você NUNCA escreveria</Label>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {TONE_AVOID.map((t) => {
-                    const active = form.tone_avoid.includes(t);
-                    return (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() => toggle("tone_avoid", t)}
-                        className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                          active
-                            ? "border-destructive bg-destructive/10 text-destructive"
-                            : "border-border bg-background hover:bg-secondary"
-                        }`}
-                      >
-                        {t}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div>
-                <Label htmlFor="tone_examples">Exemplos do seu tom (opcional, mas ouro)</Label>
-                <Textarea
-                  id="tone_examples"
-                  value={form.tone_examples ?? ""}
-                  onChange={(e) => setForm({ ...form, tone_examples: e.target.value })}
-                  placeholder="Cole 1 ou 2 trechos seus que você acha que captam bem como você fala — post, e-mail, mensagem de WhatsApp interno."
-                  rows={5}
+                  placeholder="Ex: Heads de finanças e operações de empresas brasileiras 500+ que ainda tratam viagem corporativa como custo, não como dado."
+                  rows={3}
                   className="mt-2"
                 />
               </div>
-
               <div>
-                <Label htmlFor="main_objective">Objetivo principal de thought leadership</Label>
+                <Label htmlFor="main_objective">Por que você quer publicar? (qual ganho de negócio você espera)</Label>
                 <Textarea
                   id="main_objective"
                   value={form.main_objective}
                   onChange={(e) => setForm({ ...form, main_objective: e.target.value })}
-                  placeholder="Ex: Posicionar a categoria 'travel como dado de operação' e ser a primeira referência brasileira citada quando o tema aparece."
-                  rows={4}
-                  className="mt-2"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="custom_briefing">Briefing livre (opcional)</Label>
-                <Textarea
-                  id="custom_briefing"
-                  value={form.custom_briefing ?? ""}
-                  onChange={(e) =>
-                    setForm({ ...form, custom_briefing: e.target.value })
-                  }
-                  placeholder="Algo que o motor PRECISA saber sobre você, sua área ou a Onfly e que não cabe nos campos acima."
-                  rows={4}
+                  placeholder="Ex: Quero virar a primeira referência citada quando alguém fala em 'travel como dado de operação'."
+                  rows={3}
                   className="mt-2"
                 />
               </div>
             </div>
-          )}
+          </Section>
 
-          {step === 4 && <StepReferences />}
+          {/* Section 3: tom */}
+          <Section title="Como você fala">
+            <div>
+              <Label>Como você quer soar (escolha 2-5)</Label>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {TONE_TRAITS.map((t) => {
+                  const active = form.tone_traits.includes(t);
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => toggleTrait(t)}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                        active
+                          ? "border-brand-500 bg-brand-500 text-white"
+                          : "border-border bg-background hover:bg-secondary"
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
-          {step === 5 && <StepDocuments />}
+            <div className="mt-4">
+              <Label htmlFor="tone_examples">Exemplos do seu tom (opcional)</Label>
+              <Textarea
+                id="tone_examples"
+                value={form.tone_examples}
+                onChange={(e) => setForm({ ...form, tone_examples: e.target.value })}
+                placeholder="Cole 1-2 trechos seus que capturam bem como você fala. Pode ser e-mail, mensagem de WhatsApp, post antigo."
+                rows={4}
+                className="mt-2"
+              />
+            </div>
+          </Section>
+
+          {/* Section 4: documentos */}
+          <Section title="Documentos de base (opcional)">
+            <p className="mb-3 text-xs text-muted-foreground">
+              Cases, dados internos, manifestos, slides — qualquer texto que sirva de matéria-prima.
+              PDF, DOCX, TXT, MD. Você pode adicionar mais depois.
+            </p>
+            <Dropzone compact />
+          </Section>
+
+          {/* Section 5: referências */}
+          <Section title="Referências (opcional, mas valioso)">
+            <div className="grid gap-4">
+              <div>
+                <Label htmlFor="refs_profiles">
+                  Perfis cujo estilo de escrita te inspira
+                </Label>
+                <Textarea
+                  id="refs_profiles"
+                  value={refProfilesRaw}
+                  onChange={(e) => setRefProfilesRaw(e.target.value)}
+                  placeholder={`Uma por linha. Aceita formato "Nome | URL":\n\nMatheus Pessôa | https://substack.com/@matheuspessoa\nhttps://www.linkedin.com/in/lara-acrich/`}
+                  rows={5}
+                  className="mt-2 font-mono text-xs"
+                />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  O motor lê o conteúdo público de cada um e extrai padrões de hook + estilo
+                  sozinho. Pra LinkedIn (que bloqueia leitura), você cola exemplos depois.
+                </p>
+              </div>
+
+              <div>
+                <Label htmlFor="refs_links">
+                  Fontes que você acompanha (substacks, newsletters, blogs, portais…)
+                </Label>
+                <Textarea
+                  id="refs_links"
+                  value={refLinksRaw}
+                  onChange={(e) => setRefLinksRaw(e.target.value)}
+                  placeholder={`Uma por linha. Aceita "Título | URL" ou só URL:\n\nStratechery | https://stratechery.com\nhttps://www.exame.com\nhttps://www.meioemensagem.com.br`}
+                  rows={6}
+                  className="mt-2 font-mono text-xs"
+                />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Essas fontes alimentam o "Descobrir pautas" — o motor varre, rankeia e devolve
+                  ideias autorais.
+                </p>
+              </div>
+            </div>
+          </Section>
 
           {error && (
-            <p className="mt-6 text-sm text-destructive">{error}</p>
+            <p className="mt-6 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+              {error}
+            </p>
           )}
 
-          <div className="mt-8 flex items-center justify-between gap-3">
+          <div className="mt-8 flex items-center justify-between gap-3 border-t border-border pt-6">
+            <p className="text-xs text-muted-foreground">
+              {saving ? stage : "Pode finalizar — tudo é editável depois."}
+            </p>
             <Button
-              variant="ghost"
-              onClick={() => setStep((s) => Math.max(s - 1, 1))}
-              disabled={step === 1 || saving}
+              variant="primary"
+              size="lg"
+              onClick={finish}
+              disabled={saving}
+              className="min-w-[200px]"
             >
-              <ArrowLeft className="h-4 w-4" /> Voltar
+              {saving ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" /> Salvando…
+                </>
+              ) : (
+                <>
+                  <Check className="h-4 w-4" /> Concluir
+                </>
+              )}
             </Button>
-
-            {step < totalSteps ? (
-              <Button variant="primary" onClick={handleNext} disabled={saving}>
-                {saving ? "Salvando..." : "Continuar"}
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            ) : (
-              <Button variant="primary" onClick={handleFinish} disabled={saving}>
-                {saving ? "Finalizando..." : "Concluir e ir pro dashboard"}
-                <Check className="h-4 w-4" />
-              </Button>
-            )}
           </div>
         </div>
       </div>
     </main>
   );
+}
+
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="mt-10 border-t border-border pt-6 first:mt-8 first:border-0 first:pt-0">
+      <h2 className="font-display text-xl tracking-tight">{title}</h2>
+      <div className="mt-4">{children}</div>
+    </section>
+  );
+}
+
+function splitNameUrl(line: string): [string | null, string | null] {
+  // Accept "Name | url", "Name - url", "Name url", or just "url"
+  const pipeIdx = line.indexOf("|");
+  if (pipeIdx > 0) {
+    const name = line.slice(0, pipeIdx).trim();
+    const url = line.slice(pipeIdx + 1).trim();
+    return [name || null, isUrl(url) ? url : null];
+  }
+  const dashIdx = line.indexOf(" - ");
+  if (dashIdx > 0) {
+    const name = line.slice(0, dashIdx).trim();
+    const url = line.slice(dashIdx + 3).trim();
+    if (isUrl(url)) return [name || null, url];
+  }
+  // try splitting on first space
+  const spaceIdx = line.lastIndexOf(" ");
+  if (spaceIdx > 0) {
+    const maybeUrl = line.slice(spaceIdx + 1).trim();
+    if (isUrl(maybeUrl)) return [line.slice(0, spaceIdx).trim() || null, maybeUrl];
+  }
+  return [null, isUrl(line) ? line : null];
+}
+
+function isUrl(s: string): boolean {
+  try {
+    new URL(s);
+    return true;
+  } catch {
+    return false;
+  }
 }

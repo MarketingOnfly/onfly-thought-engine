@@ -51,7 +51,9 @@ export async function POST() {
     );
   }
 
-  const urls = context.referenceLinks.slice(0, 8).map((l) => l.url);
+  // Cap em 5 fontes por rodada — balanço entre cobertura e tempo total de Claude.
+  // Líder pode re-rodar pra processar as próximas se quiser.
+  const urls = context.referenceLinks.slice(0, 5).map((l) => l.url);
   const fetched = await fetchSources(urls);
 
   if (!fetched.length) {

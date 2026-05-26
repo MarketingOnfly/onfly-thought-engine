@@ -4,6 +4,12 @@
   "functions": {
     "app/api/content/generate/route.ts": { "maxDuration": 60 },
     "app/api/content/revise/route.ts": { "maxDuration": 60 },
-    "app/api/discover/route.ts": { "maxDuration": 120 }
+    "app/api/discover/route.ts": { "maxDuration": 120 },
+    "app/api/visuals/route.ts": { "maxDuration": 60 },
+    "app/api/references/profiles/[id]/analyze/route.ts": { "maxDuration": 60 },
+    "app/api/admin/campaigns/[id]/dispatch/route.ts": { "maxDuration": 300 },
+    "app/api/admin/campaigns/[id]/attachments/route.ts": { "maxDuration": 60 },
+    "app/api/documents/upload/route.ts": { "maxDuration": 60 },
+    "app/api/metrics/csv/route.ts": { "maxDuration": 60 }
   }
 }

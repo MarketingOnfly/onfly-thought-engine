@@ -12,7 +12,7 @@ export default async function CreatePage({
   const supabase = await createSupabaseServerClient();
   const { data: profile } = await supabase
     .from("leader_profiles")
-    .select("full_name, tone_traits, target_audience")
+    .select("full_name, objectives, preferred_hook_styles, content_types, tone_traits")
     .eq("user_id", user.id)
     .single();
 
@@ -29,7 +29,7 @@ export default async function CreatePage({
 
       <h1 className="mt-4 font-display text-4xl tracking-tight">Criar conteúdo</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        Defina o tema, escolha o formato e o motor entrega o draft. Tudo na sua voz.
+        Tema + opções rápidas. O motor entrega o draft na sua voz.
       </p>
 
       <CreateForm
@@ -39,6 +39,10 @@ export default async function CreatePage({
         prefillFormat={
           params.format === "article" ? "article" : "linkedin_post"
         }
+        defaultObjective={profile?.objectives?.[0] ?? null}
+        defaultHookStyle={profile?.preferred_hook_styles?.[0] ?? null}
+        defaultContentType={profile?.content_types?.[0] ?? null}
+        defaultTone={profile?.tone_traits ?? []}
       />
     </div>
   );

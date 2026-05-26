@@ -31,7 +31,12 @@ function extractTitle(html: string, fallback: string): string {
   return fallback;
 }
 
+const FETCH_TIMEOUT_MS = 8000;
+const CONTENT_PER_SOURCE = 5000;
+
 export async function fetchSource(url: string): Promise<FetchedSource | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
     const res = await fetch(url, {
       headers: {
@@ -40,18 +45,27 @@ export async function fetchSource(url: string): Promise<FetchedSource | null> {
         Accept: "text/html,application/xhtml+xml",
       },
       next: { revalidate: 60 * 30 },
+      signal: controller.signal,
     });
     if (!res.ok) return null;
     const html = await res.text();
     const title = extractTitle(html, new URL(url).hostname);
-    const content = stripHtml(html).slice(0, 12000);
+    const content = stripHtml(html).slice(0, CONTENT_PER_SOURCE);
     return { url, title, content };
   } catch {
     return null;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
 export async function fetchSources(urls: string[]): Promise<FetchedSource[]> {
-  const results = await Promise.all(urls.map(fetchSource));
-  return results.filter((x): x is FetchedSource => x !== null);
+  // allSettled in case one source hangs even with timeout (network stack quirks)
+  const results = await Promise.allSettled(urls.map(fetchSource));
+  return results
+    .filter(
+      (r): r is PromiseFulfilledResult<FetchedSource> =>
+        r.status === "fulfilled" && r.value !== null
+    )
+    .map((r) => r.value);
 }

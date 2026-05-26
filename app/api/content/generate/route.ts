@@ -7,6 +7,7 @@ import {
   buildContentUserPrompt,
 } from "@/lib/anthropic/prompts";
 import { generateContentSchema } from "@/lib/validation";
+import { CONTENT_LENGTHS } from "@/lib/style-presets";
 
 export const maxDuration = 60;
 
@@ -37,7 +38,24 @@ export async function POST(request: NextRequest) {
     topic: parsed.data.topic,
     brief: parsed.data.brief,
     extraInstructions: parsed.data.extra_instructions,
+    hookStyle: parsed.data.hook_style,
+    objective: parsed.data.objective,
+    contentType: parsed.data.content_type,
+    length: parsed.data.length ?? null,
+    toneOverride: parsed.data.tone_override ?? null,
   });
+
+  // max_tokens segue o tamanho pedido — corta antes do modelo "ficar empolgado".
+  const lengthPreset = parsed.data.length
+    ? CONTENT_LENGTHS.find((l) => l.key === parsed.data.length)
+    : null;
+  const maxTokens = lengthPreset
+    ? parsed.data.format === "linkedin_post"
+      ? lengthPreset.maxTokensPost
+      : lengthPreset.maxTokensArticle
+    : parsed.data.format === "linkedin_post"
+      ? 1400 // default = médio
+      : 4000;
 
   const supabase = await createSupabaseServerClient();
 
@@ -51,6 +69,11 @@ export async function POST(request: NextRequest) {
       status: "draft",
       meta: {
         extra_instructions: parsed.data.extra_instructions ?? null,
+        length: parsed.data.length ?? null,
+        tone_override: parsed.data.tone_override ?? null,
+        hook_style: parsed.data.hook_style ?? null,
+        objective: parsed.data.objective ?? null,
+        content_type: parsed.data.content_type ?? null,
       },
     })
     .select()
@@ -69,7 +92,7 @@ export async function POST(request: NextRequest) {
     const anthropic = getAnthropic();
     const response = await anthropic.messages.create({
       model: MODEL,
-      max_tokens: parsed.data.format === "linkedin_post" ? 2000 : 6000,
+      max_tokens: maxTokens,
       system: [
         {
           type: "text",

@@ -9,16 +9,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import type { OrgDocument } from "@/lib/db/types";
 import { formatDate } from "@/lib/utils";
+import { useConfirm } from "@/components/confirm";
 
-const KINDS = [
-  "voice_guidelines",
-  "forbidden",
-  "pillars",
-  "onfly_facts",
-  "tone_examples",
+const KINDS: { key: string; label: string }[] = [
+  { key: "voice_guidelines", label: "Guia de voz" },
+  { key: "forbidden", label: "Proibições" },
+  { key: "pillars", label: "Pilares de marca" },
+  { key: "onfly_facts", label: "Fatos da Onfly" },
+  { key: "tone_examples", label: "Exemplos de tom" },
 ];
 
-export default function AdminPanel({ initial }: { initial: OrgDocument[] }) {
+export default function OrgDocsPanel({ initial }: { initial: OrgDocument[] }) {
   const [items, setItems] = useState<OrgDocument[]>(initial);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<{
@@ -35,6 +36,7 @@ export default function AdminPanel({ initial }: { initial: OrgDocument[] }) {
   });
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const confirm = useConfirm();
 
   function startNew() {
     setEditingId(null);
@@ -91,7 +93,13 @@ export default function AdminPanel({ initial }: { initial: OrgDocument[] }) {
   }
 
   async function remove(id: string) {
-    if (!confirm("Apagar este documento? Vai afetar todas as gerações.")) return;
+    const ok = await confirm({
+      title: "Apagar este documento?",
+      description:
+        "Ele some do contexto que o motor usa pra escrever — vai afetar todas as próximas gerações.",
+      destructive: true,
+    });
+    if (!ok) return;
     const res = await fetch(`/api/admin/org-docs/${id}`, { method: "DELETE" });
     if (res.ok) setItems(items.filter((x) => x.id !== id));
   }
@@ -138,7 +146,7 @@ export default function AdminPanel({ initial }: { initial: OrgDocument[] }) {
                 className="mt-1 flex h-11 w-full rounded-xl border border-border bg-background px-4 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               >
                 {KINDS.map((k) => (
-                  <option key={k} value={k}>{k}</option>
+                  <option key={k.key} value={k.key}>{k.label}</option>
                 ))}
               </select>
             </div>
@@ -161,10 +169,10 @@ export default function AdminPanel({ initial }: { initial: OrgDocument[] }) {
               onChange={(e) => setDraft({ ...draft, content: e.target.value })}
               rows={14}
               className="mt-1 font-mono text-xs"
-              placeholder="Escreva como se estivesse falando com a IA. Pode ter listas, regras, exemplos."
+              placeholder="Use linguagem direta, como instruções. Pode ter listas e exemplos."
             />
             <p className="mt-2 text-xs text-muted-foreground">
-              Este texto é injetado integralmente no system prompt de cada líder.
+              Este texto entra no contexto que o motor lê pra todo líder, em toda geração.
             </p>
           </div>
           <div className="mt-4 flex justify-end gap-2">
@@ -195,7 +203,9 @@ export default function AdminPanel({ initial }: { initial: OrgDocument[] }) {
                   <div className="flex items-center gap-2">
                     <FileText className="h-4 w-4 text-muted-foreground" />
                     <span className="font-medium">{it.name}</span>
-                    <Badge variant="outline" className="text-[10px]">{it.kind}</Badge>
+                    <Badge variant="outline" className="text-[10px]">
+                      {KINDS.find((k) => k.key === it.kind)?.label ?? it.kind}
+                    </Badge>
                     {it.is_active ? (
                       <Badge variant="brand">ativo</Badge>
                     ) : (

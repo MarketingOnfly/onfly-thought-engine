@@ -19,19 +19,20 @@
     --border: 240 17% 90%;
     --input: 240 17% 90%;
 
-    --primary: 257 90% 64%;
+    /* Onfly primary #009EFB = hsl(202, 100%, 49%) */
+    --primary: 202 100% 49%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 240 20% 96%;
     --secondary-foreground: 240 32% 14%;
 
-    --accent: 257 100% 96%;
-    --accent-foreground: 257 60% 28%;
+    --accent: 202 100% 96%;
+    --accent-foreground: 202 80% 28%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --ring: 257 90% 64%;
+    --ring: 202 100% 49%;
 
     --radius: 0.9rem;
   }
@@ -47,15 +48,15 @@
     --card-foreground: 0 0% 98%;
     --border: 240 15% 18%;
     --input: 240 15% 18%;
-    --primary: 257 90% 70%;
+    --primary: 202 100% 62%;
     --primary-foreground: 240 25% 6%;
     --secondary: 240 15% 14%;
     --secondary-foreground: 0 0% 98%;
-    --accent: 257 50% 16%;
-    --accent-foreground: 257 100% 90%;
+    --accent: 202 50% 16%;
+    --accent-foreground: 202 100% 90%;
     --destructive: 0 70% 60%;
     --destructive-foreground: 0 0% 98%;
-    --ring: 257 90% 70%;
+    --ring: 202 100% 62%;
   }
 
   * {
@@ -75,7 +76,7 @@
 
 @layer components {
   .gradient-text {
-    background: linear-gradient(120deg, #7549ff, #b6a7ff 40%, #3c2380);
+    background: linear-gradient(120deg, #009efb 0%, #34e098 50%, #2a035c 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -95,7 +96,7 @@
     position: absolute;
     inset: -1px;
     border-radius: inherit;
-    background: linear-gradient(140deg, rgba(117, 73, 255, 0.4), transparent 50%);
+    background: linear-gradient(140deg, rgba(0, 158, 251, 0.4), transparent 50%);
     pointer-events: none;
     opacity: 0.5;
     mask:

@@ -35,3 +35,7 @@ next-env.d.ts
 
 # claude code (machine-specific)
 .claude/
+
+# PDFs já extraídos pra .txt (servem só ao build local de prompts)
+pdf-extracts/
+/Tecnicas\ de\ escrita/

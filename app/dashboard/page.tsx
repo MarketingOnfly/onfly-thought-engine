@@ -36,11 +36,31 @@ export default async function DashboardHome() {
     { label: "Documentos de base", value: docs.length },
   ];
 
+  // Saudação simples baseada no horário SP (server pode estar em UTC, então força timezone).
+  const hourSP = parseInt(
+    new Intl.DateTimeFormat("pt-BR", {
+      hour: "numeric",
+      hour12: false,
+      timeZone: "America/Sao_Paulo",
+    }).format(new Date()),
+    10
+  );
+  const greeting =
+    hourSP < 5
+      ? "Trabalhando até tarde,"
+      : hourSP < 12
+        ? "Bom dia,"
+        : hourSP < 18
+          ? "Boa tarde,"
+          : "Boa noite,";
+
   return (
     <div className="container max-w-6xl px-6 py-10 md:py-12">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-sm text-muted-foreground">Olá, {profile.full_name.split(" ")[0]}.</p>
+          <p className="text-sm text-muted-foreground">
+            {greeting} {profile.full_name.split(" ")[0]}.
+          </p>
           <h1 className="mt-1 font-display text-4xl tracking-tight md:text-5xl">
             Sobre o que <span className="gradient-text">você vai escrever hoje?</span>
           </h1>
@@ -149,8 +169,8 @@ export default async function DashboardHome() {
               <DLRow label="Tom">{profile.tone_traits.slice(0, 4).join(" · ") || "—"}</DLRow>
             </dl>
             <Button asChild variant="ghost" size="sm" className="mt-4 w-full">
-              <Link href="/dashboard/profile">
-                Editar perfil <ArrowRight className="h-3.5 w-3.5" />
+              <Link href="/dashboard/profile?tab=estilo">
+                Ajustar perfil e estilo <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             </Button>
           </div>

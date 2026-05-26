@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Fraunces } from "next/font/google";
 import "./globals.css";
+import { ConfirmProvider } from "@/components/confirm";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -29,7 +30,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" className={`${inter.variable} ${display.variable}`}>
       <body className="min-h-screen bg-background text-foreground antialiased">
-        {children}
+        <ConfirmProvider>{children}</ConfirmProvider>
       </body>
     </html>
   );

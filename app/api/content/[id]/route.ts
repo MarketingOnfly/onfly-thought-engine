@@ -5,6 +5,11 @@ import { z } from "zod";
 const patchSchema = z.object({
   final_markdown: z.string().optional(),
   status: z.enum(["draft", "refining", "approved"]).optional(),
+  // ISO datetime string, or null to clear
+  scheduled_at: z
+    .union([z.string().datetime(), z.literal(""), z.null()])
+    .optional()
+    .transform((v) => (v === "" || v === undefined ? null : v ?? null)),
 });
 
 export async function PATCH(

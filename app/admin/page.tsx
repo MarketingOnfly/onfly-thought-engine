@@ -3,8 +3,8 @@ import { redirect } from "next/navigation";
 import { ArrowLeft, ShieldCheck } from "lucide-react";
 import { createSupabaseServerClient, getServerUser } from "@/lib/supabase/server";
 import { isAdmin } from "@/lib/admin";
-import type { OrgDocument } from "@/lib/db/types";
-import AdminPanel from "./panel";
+import type { Campaign, OrgDocument } from "@/lib/db/types";
+import AdminTabs from "./tabs";
 
 export default async function AdminHome() {
   const user = await getServerUser();
@@ -12,13 +12,21 @@ export default async function AdminHome() {
   if (!(await isAdmin(user))) redirect("/dashboard");
 
   const supabase = await createSupabaseServerClient();
-  const { data } = await supabase
-    .from("org_documents")
-    .select("*")
-    .order("created_at", { ascending: true });
+
+  const [docsRes, campaignsRes, leadersRes] = await Promise.all([
+    supabase.from("org_documents").select("*").order("created_at", { ascending: true }),
+    supabase.from("campaigns").select("*").order("created_at", { ascending: false }),
+    supabase
+      .from("leader_profiles")
+      .select("user_id, full_name, role, area, onboarding_completed")
+      .order("full_name", { ascending: true }),
+  ]);
+
+  const allLeaders = (leadersRes.data ?? []).filter((l) => l.onboarding_completed);
+  const activeLeaders = allLeaders.length;
 
   return (
-    <div className="container max-w-5xl px-6 py-10">
+    <div className="container max-w-6xl px-6 py-10">
       <div className="flex items-center justify-between">
         <Link
           href="/dashboard"
@@ -31,13 +39,23 @@ export default async function AdminHome() {
         </span>
       </div>
 
-      <h1 className="mt-4 font-display text-4xl tracking-tight">Guidelines da Onfly</h1>
+      <h1 className="mt-4 font-display text-4xl tracking-tight">Painel admin</h1>
       <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-        Tudo aqui é injetado como contexto OBRIGATÓRIO em cada prompt de cada líder. Edite com cuidado:
-        muda o tom de todas as gerações.
+        Suas orientações entram no contexto que o motor lê pra todo líder. Campanhas geram um
+        rascunho personalizado pra cada líder ativo. Use com peso.
       </p>
 
-      <AdminPanel initial={(data ?? []) as OrgDocument[]} />
+      <AdminTabs
+        initialDocs={(docsRes.data ?? []) as OrgDocument[]}
+        initialCampaigns={(campaignsRes.data ?? []) as Campaign[]}
+        activeLeaders={activeLeaders}
+        leaders={allLeaders.map((l) => ({
+          user_id: l.user_id as string,
+          full_name: l.full_name as string,
+          role: (l.role as string | null) ?? "",
+          area: (l.area as string | null) ?? "",
+        }))}
+      />
     </div>
   );
 }
