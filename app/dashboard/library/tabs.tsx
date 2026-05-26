@@ -494,12 +494,15 @@ function ProfileCard({
   const topics = profile.topics_recurring ?? [];
 
   const status = analysisStatus(profile, isAnalyzing);
+  // "Tem análise" = tem padrões REAIS extraídos. style_notes sozinho não conta
+  // porque quando é unfetchable a gente coloca a mensagem de "LinkedIn
+  // bloqueia..." nesse campo.
   const hasAnalysis =
     hooks.length > 0 ||
-    styleBullets.length > 0 ||
     toneSignals.length > 0 ||
     topics.length > 0 ||
     !!profile.positioning;
+  const needsSample = profile.analysis_status === "unfetchable";
 
   return (
     <li className="flex flex-col rounded-xl border border-border bg-card p-4 shadow-sm">
@@ -552,32 +555,29 @@ function ProfileCard({
         </p>
       )}
 
-      {/* Status — quando ainda não tem análise */}
-      {!hasAnalysis && !isAnalyzing && (
+      {/* Status — sem análise real ainda OU precisa de sample (LinkedIn) */}
+      {needsSample && !isAnalyzing && !sampleOpen && (
         <div className="mt-3 space-y-2">
-          {profile.analysis_status === "unfetchable" ? (
-            <>
-              <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50/60 p-3 text-xs text-amber-900">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>
-                  {profile.style_notes ||
-                    "Esse perfil precisa de exemplos colados pra o motor analisar."}
-                </span>
-              </div>
-              {!sampleOpen && (
-                <Button variant="outline" size="sm" onClick={onOpenSample}>
-                  Colar 2-3 posts pra análise
-                </Button>
-              )}
-            </>
-          ) : (
-            <div className="flex items-center gap-2 rounded-lg bg-secondary/40 p-3 text-xs text-muted-foreground">
-              <Search className="h-3.5 w-3.5" />
-              <span>
-                Aguardando análise. Clica no ícone de refresh acima pra rodar agora.
-              </span>
-            </div>
-          )}
+          <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50/60 p-3 text-xs text-amber-900">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              {profile.style_notes ||
+                "Esse perfil precisa de exemplos colados pra o motor analisar."}
+            </span>
+          </div>
+          <Button variant="outline" size="sm" onClick={onOpenSample}>
+            {hasAnalysis ? "Adicionar mais exemplos" : "Colar 2-3 posts pra análise"}
+          </Button>
+        </div>
+      )}
+
+      {/* Aguardando primeira análise (status pending, sem nada extraído) */}
+      {!needsSample && !hasAnalysis && !isAnalyzing && (
+        <div className="mt-3 flex items-center gap-2 rounded-lg bg-secondary/40 p-3 text-xs text-muted-foreground">
+          <Search className="h-3.5 w-3.5" />
+          <span>
+            Aguardando análise. Clica no ícone de refresh acima pra rodar agora.
+          </span>
         </div>
       )}
 
