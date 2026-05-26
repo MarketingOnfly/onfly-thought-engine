@@ -27,3 +27,19 @@ export function formatDate(value: string | Date) {
     year: "numeric",
   });
 }
+
+/**
+ * Slug pt-BR safe: tira acento, troca espaço/símbolo por hífen, limita
+ * tamanho. Usado pra nomes de arquivos de download.
+ */
+export function slugify(text: string, max = 60) {
+  const base = (text ?? "infografico")
+    .toString()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, max);
+  return base || "infografico";
+}

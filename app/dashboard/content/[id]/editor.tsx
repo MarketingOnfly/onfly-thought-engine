@@ -26,7 +26,7 @@ import { Markdown, PlainPost } from "@/components/markdown";
 import { InfographicRenderer } from "@/components/visual-renderer";
 import { ReviewPanel } from "@/components/review-panel";
 import type { ContentDraft, ContentVisual } from "@/lib/db/types";
-import { formatDate } from "@/lib/utils";
+import { formatDate, slugify } from "@/lib/utils";
 import { apiFetch } from "@/lib/client-fetch";
 import { useConfirm } from "@/components/confirm";
 
@@ -477,7 +477,10 @@ export default function ContentEditor({ initial }: { initial: ContentDraft }) {
                       <Trash2 className="h-3 w-3" /> Remover
                     </Button>
                   </div>
-                  <InfographicRenderer html={v.payload} />
+                  <InfographicRenderer
+                    html={v.payload}
+                    filename={slugify(draft.topic)}
+                  />
                 </div>
               ))}
           </div>

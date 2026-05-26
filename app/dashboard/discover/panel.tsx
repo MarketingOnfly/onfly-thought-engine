@@ -9,11 +9,11 @@ import type { ReferenceLink, TopicSuggestion } from "@/lib/db/types";
 import { apiFetch } from "@/lib/client-fetch";
 
 const STAGES = [
-  { until: 8, label: "Lendo suas fontes…" },
-  { until: 15, label: "Extraindo o que importa…" },
-  { until: 30, label: "Cruzando com seu posicionamento…" },
-  { until: 60, label: "Pensando com mais cuidado…" },
-  { until: 999, label: "Quase lá — finalizando ideias…" },
+  { until: 10, label: "Lendo as fontes da sua biblioteca…" },
+  { until: 30, label: "Buscando notícias frescas na web…" },
+  { until: 70, label: "Cruzando com seu posicionamento e evitando repetir ideias antigas…" },
+  { until: 120, label: "Forçando diversidade de ângulo e formato…" },
+  { until: 999, label: "Quase lá — sintetizando as melhores…" },
 ];
 
 export default function DiscoverPanel({
@@ -119,7 +119,8 @@ export default function DiscoverPanel({
                 <span className="ml-auto font-mono text-xs text-brand-700">{elapsed}s</span>
               </div>
               <p className="mt-2 text-xs text-brand-700">
-                Demora ~30s. Vale a pena — o motor pensa mais antes de responder.
+                Demora 1-2 min. O motor faz buscas reais na web, lê suas fontes
+                e cruza com suas ideias antigas pra não repetir.
               </p>
             </div>
           )}

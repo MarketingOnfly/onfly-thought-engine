@@ -373,36 +373,54 @@ export function buildReviseUserPrompt(opts: {
 
 export function buildDiscoveryPrompt(opts: {
   fetchedSources: { url: string; title: string; content: string }[];
+  trustedSourceUrls: string[];
+  recentIdeaTitles: string[];
+  todayISO: string;
 }): string {
   const sources = opts.fetchedSources
     .map(
       (s, i) =>
-        `### Fonte ${i + 1}: ${s.title}\nURL: ${s.url}\n\nConteúdo extraído:\n${s.content.slice(0, 3500)}`
+        `### Fonte ${i + 1}: ${s.title}\nURL: ${s.url}\n\nConteúdo extraído (snippet):\n${s.content.slice(0, 2500)}`
     )
     .join("\n\n---\n\n");
 
+  const trusted = opts.trustedSourceUrls.slice(0, 30).join("\n- ");
+  const recent = opts.recentIdeaTitles.length
+    ? opts.recentIdeaTitles.map((t) => `- ${t}`).join("\n")
+    : "(nenhuma)";
+
   return [
-    "TAREFA: analisar as fontes que o líder acompanha e gerar 6 a 10 ideias de conteúdo (posts ou artigos) que ele pode escrever AGORA.",
+    `Hoje é ${opts.todayISO}. Você é um agente de descoberta de pauta pra o líder descrito no system prompt.`,
     "",
-    "FONTES DISPONÍVEIS (matéria-prima crua):",
+    "OBJETIVO: devolver 8 a 12 ideias de conteúdo (posts ou artigos) que o líder PODE escrever HOJE, com diversidade radical de ângulo, formato e tema.",
+    "",
+    "VOCÊ TEM A FERRAMENTA web_search. USE de verdade — pelo menos 3 buscas, cada uma com query diferente. Combinações úteis:",
+    "- Notícias B2B brasileiras dos últimos 7 dias relacionadas ao posicionamento do líder.",
+    "- Estatísticas/relatórios novos que cruzam com os pilares do líder.",
+    "- Movimentos recentes de concorrentes ou empresas-referência (Pipefy, Hubspot Brasil, Conta Azul, Stone, etc).",
+    "- Posts em alta de criadores que o líder acompanha (busque o nome do criador + ano corrente).",
+    "",
+    "FONTES QUE O LÍDER JÁ CONFIA (use como qualidade de referência, e quando possível resgate matéria fresca delas via web_search):",
+    `- ${trusted}`,
+    "",
+    "MATÉRIA-PRIMA JÁ EXTRAÍDA DA BIBLIOTECA (use COMO PONTO DE PARTIDA, não como única fonte):",
     sources,
     "",
-    "REGRAS DAS IDEIAS:",
-    "- Cada ideia deve ser AUTORAL: o líder precisa ter uma opinião própria sobre o tema, não só repercutir.",
-    "- Conectar com a área e a audiência-alvo descritas no system prompt.",
-    "- Trazer ângulo contraintuitivo, dado novo, ou conexão entre tema externo e operação interna.",
-    "- Ignorar ideias genéricas (\"a importância de X\", \"5 dicas pra Y\").",
-    "- Priorizar timeliness — assuntos que estão quentes e o líder pode comentar com autoridade.",
+    "ANTI-PATTERN — IDEIAS RECENTES DESSE LÍDER (NÃO repita assunto nem ângulo. Procure tema novo):",
+    recent,
     "",
-    "FORMATO DE SAÍDA: JSON puro. NADA de texto antes ou depois. NADA de markdown. Objeto único com chave `ideas`, array de objetos com:",
-    "- title (string): título da ideia, máximo 12 palavras",
-    "- angle (string): a tese / aposta autoral do líder (2-3 frases)",
-    "- why_now (string): por que esse tema é relevante agora (1 frase)",
-    "- source_url (string): URL da fonte que inspirou (uma das fornecidas)",
-    "- source_title (string): título da fonte",
-    "- relevance_score (number): 0-100, quão alinhado com posicionamento do líder",
+    "REGRAS DAS IDEIAS (todas obrigatórias):",
+    "- Cada ideia traz uma tese AUTORAL. Sem \"a importância de X\", sem \"5 dicas\", sem repercutir notícia sem ângulo próprio.",
+    "- DIVERSIDADE FORÇADA — distribua as ideias entre formatos: ao menos 2 contrarian, 2 dado-com-leitura-própria, 2 bastidor/learning, 2 newsjacking concreto, 1 manifesto.",
+    "- DIVERSIDADE DE TEMA — cada ideia toca um pilar diferente. Não empilhe 4 ideias sobre o mesmo assunto.",
+    "- Cada angle precisa de no MÍNIMO 1 fato concreto (número, nome, data, case). Se não tiver, busca de novo.",
+    "- Liga sempre com o cargo + audiência-alvo do líder no system prompt.",
+    "- Se uma busca não trouxer fato concreto, joga fora a ideia e tenta outra.",
     "",
-    "Exemplo de schema:",
-    '{ "ideas": [ { "title": "...", "angle": "...", "why_now": "...", "source_url": "...", "source_title": "...", "relevance_score": 85 } ] }',
+    "FORMATO DE SAÍDA — APÓS terminar suas buscas web, devolva JSON puro. SEM markdown, SEM texto antes/depois.",
+    "Schema:",
+    '{ "ideas": [ { "title": "string ≤ 12 palavras", "angle": "tese autoral 2-3 frases", "why_now": "1 frase sobre timing", "source_url": "URL real (web_search ou biblioteca)", "source_title": "título da fonte", "relevance_score": número 0-100 } ] }',
+    "",
+    "Comece pelas buscas web e só depois sintetize as ideias.",
   ].join("\n");
 }

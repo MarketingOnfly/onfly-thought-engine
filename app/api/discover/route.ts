@@ -8,7 +8,7 @@ import {
 } from "@/lib/anthropic/prompts";
 import { fetchSources } from "@/lib/fetch-source";
 
-export const maxDuration = 120;
+export const maxDuration = 180;
 
 interface RawIdea {
   title?: unknown;
@@ -24,7 +24,8 @@ function tryParseJson(text: string): { ideas: RawIdea[] } | null {
   try {
     return JSON.parse(trimmed);
   } catch {
-    const match = trimmed.match(/\{[\s\S]*\}/);
+    // tenta achar JSON dentro do texto (caso Claude tenha incluído comentário)
+    const match = trimmed.match(/\{[\s\S]*"ideas"[\s\S]*\}/);
     if (!match) return null;
     try {
       return JSON.parse(match[0]);
@@ -51,25 +52,36 @@ export async function POST() {
     );
   }
 
-  // Cap em 5 fontes por rodada — balanço entre cobertura e tempo total de Claude.
-  // Líder pode re-rodar pra processar as próximas se quiser.
-  const urls = context.referenceLinks.slice(0, 5).map((l) => l.url);
+  // Fetch das primeiras 8 fontes pra dar contexto cru (não bloqueia se falhar).
+  const urls = context.referenceLinks.slice(0, 8).map((l) => l.url);
   const fetched = await fetchSources(urls);
 
-  if (!fetched.length) {
-    return NextResponse.json(
-      { error: "Não consegui baixar nenhuma das suas fontes agora. Tente novamente em alguns minutos." },
-      { status: 502 }
-    );
-  }
+  // Carrega ideias recentes (≤30) pra usar como anti-pattern.
+  const supabase = await createSupabaseServerClient();
+  const { data: recent } = await supabase
+    .from("topic_suggestions")
+    .select("title")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(30);
+  const recentTitles = (recent ?? []).map((r) => r.title as string);
 
   const system = buildLeaderSystemPrompt(context);
-  const userPrompt = buildDiscoveryPrompt({ fetchedSources: fetched });
+  const userPrompt = buildDiscoveryPrompt({
+    fetchedSources: fetched,
+    trustedSourceUrls: context.referenceLinks.map((l) => l.url),
+    recentIdeaTitles: recentTitles,
+    todayISO: new Date().toISOString().slice(0, 10),
+  });
 
   const anthropic = getAnthropic();
+
+  // web_search é server-side tool — Claude executa as buscas internamente
+  // e devolve o texto final na mesma resposta. Sem loop necessário.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const response = await anthropic.messages.create({
     model: MODEL,
-    max_tokens: 4000,
+    max_tokens: 6000,
     system: [
       {
         type: "text",
@@ -77,24 +89,33 @@ export async function POST() {
         cache_control: { type: "ephemeral" },
       },
     ],
+    tools: [
+      {
+        type: "web_search_20250305",
+        name: "web_search",
+        max_uses: 6,
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ] as any,
     messages: [{ role: "user", content: userPrompt }],
   });
 
-  const text = response.content
+  const finalText = response.content
     .filter((b) => b.type === "text")
     .map((b) => (b as { text: string }).text)
     .join("\n")
     .trim();
 
-  const parsed = tryParseJson(text);
+  const parsed = tryParseJson(finalText);
   if (!parsed?.ideas?.length) {
     return NextResponse.json(
-      { error: "Não consegui extrair ideias estruturadas. Tente de novo." },
+      {
+        error:
+          "Não consegui extrair ideias estruturadas. Tente de novo — o agente pode ter ficado preso em busca.",
+      },
       { status: 502 }
     );
   }
-
-  const supabase = await createSupabaseServerClient();
 
   const rows = parsed.ideas
     .map((idea) => ({
