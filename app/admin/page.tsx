@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft, ShieldCheck } from "lucide-react";
 import { createSupabaseServerClient, getServerUser } from "@/lib/supabase/server";
-import { isAdmin } from "@/lib/admin";
+import { isAdmin, seedEnvAdmins } from "@/lib/admin";
 import type { Campaign, OrgDocument } from "@/lib/db/types";
 import AdminTabs from "./tabs";
 
@@ -10,6 +10,10 @@ export default async function AdminHome() {
   const user = await getServerUser();
   if (!user) redirect("/login");
   if (!(await isAdmin(user))) redirect("/dashboard");
+
+  // Sincroniza ADMIN_EMAILS → org_admins toda vez que /admin é aberto.
+  // Idempotente — só insere se faltar e se o user já tiver feito login.
+  await seedEnvAdmins();
 
   const supabase = await createSupabaseServerClient();
 
