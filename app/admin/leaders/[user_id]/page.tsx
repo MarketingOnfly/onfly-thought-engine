@@ -48,47 +48,111 @@ export default async function LeaderDetailPage({
   if (!(await isAdmin(user))) redirect("/dashboard");
 
   const { user_id } = await params;
-  // Tenta service_role pra ignorar RLS — admin pode ler perfil/drafts de
-  // qualquer líder. Se a env não estiver setada, cai pro client normal
-  // (depende das policies da migration 011 + auth do user).
+
+  // Tenta service_role; senão cai pro client normal (precisa de RLS de migration 011).
   let supabase;
+  let clientKind: "service_role" | "anon" = "anon";
   try {
     supabase = createSupabaseAdminClient();
+    clientKind = "service_role";
   } catch {
     supabase = await createSupabaseServerClient();
   }
 
-  const [profileRes, linkedinRes, draftsRes, campaignsRes, metricsRes] =
-    await Promise.all([
-      supabase
-        .from("leader_profiles")
-        .select("*")
-        .eq("user_id", user_id)
-        .maybeSingle(),
-      supabase
-        .from("linkedin_connections")
-        .select("followers_count, linkedin_url, last_synced_at, profile_data")
-        .eq("user_id", user_id)
-        .maybeSingle(),
-      supabase
-        .from("content_drafts")
-        .select("id, format, topic, status, created_at, tags, scheduled_at")
-        .eq("user_id", user_id)
-        .order("created_at", { ascending: false })
-        .limit(10),
-      supabase
-        .from("campaign_drafts")
-        .select("id, status, created_at, campaign:campaigns(id, name, theme), draft_id")
-        .eq("user_id", user_id)
-        .order("created_at", { ascending: false })
-        .limit(10),
-      supabase
-        .from("post_metrics")
-        .select("impressions, likes, comments, reposts, content_draft_id, posted_at")
-        .eq("user_id", user_id)
-        .order("posted_at", { ascending: false, nullsFirst: false })
-        .limit(20),
-    ]);
+  // Wrap as queries em try/catch pra surface diagnóstico claro em vez de
+  // crash com "Application error: server-side exception".
+  let profileRes,
+    linkedinRes,
+    draftsRes,
+    campaignsRes,
+    metricsRes;
+  try {
+    [profileRes, linkedinRes, draftsRes, campaignsRes, metricsRes] =
+      await Promise.all([
+        supabase
+          .from("leader_profiles")
+          .select("*")
+          .eq("user_id", user_id)
+          .maybeSingle(),
+        supabase
+          .from("linkedin_connections")
+          .select("followers_count, linkedin_url, last_synced_at, profile_data")
+          .eq("user_id", user_id)
+          .maybeSingle(),
+        supabase
+          .from("content_drafts")
+          .select("id, format, topic, status, created_at, tags, scheduled_at")
+          .eq("user_id", user_id)
+          .order("created_at", { ascending: false })
+          .limit(10),
+        supabase
+          .from("campaign_drafts")
+          .select(
+            "id, status, created_at, campaign:campaigns(id, name, theme), draft_id"
+          )
+          .eq("user_id", user_id)
+          .order("created_at", { ascending: false })
+          .limit(10),
+        supabase
+          .from("post_metrics")
+          .select(
+            "impressions, likes, comments, reposts, content_draft_id, posted_at"
+          )
+          .eq("user_id", user_id)
+          .order("posted_at", { ascending: false, nullsFirst: false })
+          .limit(20),
+      ]);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return (
+      <div className="container max-w-3xl px-6 py-10">
+        <Link
+          href="/admin"
+          className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" /> Painel admin
+        </Link>
+        <h1 className="mt-4 font-display text-3xl tracking-tight">
+          Não consegui carregar este perfil
+        </h1>
+        <div className="mt-4 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm">
+          <p className="font-medium text-destructive">Erro ao consultar Supabase</p>
+          <p className="mt-1 font-mono text-xs text-destructive">{msg}</p>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Cliente em uso: <strong>{clientKind}</strong>. user_id consultado:{" "}
+            <span className="font-mono">{user_id}</span>.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Erro retornado pelo Supabase (não exception, mas {error}) — também surface
+  if (profileRes.error) {
+    return (
+      <div className="container max-w-3xl px-6 py-10">
+        <Link
+          href="/admin"
+          className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" /> Painel admin
+        </Link>
+        <h1 className="mt-4 font-display text-3xl tracking-tight">
+          Não consegui carregar este perfil
+        </h1>
+        <div className="mt-4 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm">
+          <p className="font-medium text-destructive">Supabase devolveu erro</p>
+          <p className="mt-1 font-mono text-xs text-destructive">
+            {profileRes.error.message ?? "(sem mensagem)"}
+          </p>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Cliente em uso: <strong>{clientKind}</strong>. user_id:{" "}
+            <span className="font-mono">{user_id}</span>.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (!profileRes.data) notFound();
   const profile = profileRes.data as LeaderProfile;
