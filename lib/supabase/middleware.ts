@@ -35,22 +35,10 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/onboarding") ||
     pathname.startsWith("/admin");
 
-  const isPublic =
-    pathname === "/login" ||
-    pathname === "/cadastro" ||
-    pathname.startsWith("/recuperar-senha") ||
-    pathname.startsWith("/auth/");
-
   if (isProtected && !user) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("next", pathname);
-    return NextResponse.redirect(url);
-  }
-
-  if (!isPublic && !isProtected && !user) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/login";
     return NextResponse.redirect(url);
   }
 
