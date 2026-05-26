@@ -21,7 +21,7 @@ export default function RecuperarSenhaPage() {
       const supabase = createSupabaseBrowserClient();
       const origin = typeof window !== "undefined" ? window.location.origin : "";
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-        redirectTo: `${origin}/recuperar-senha/nova-senha`,
+        redirectTo: `${origin}/auth/callback?type=recovery`,
       });
       if (error) throw error;
       setStatus("sent");
