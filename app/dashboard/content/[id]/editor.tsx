@@ -846,7 +846,18 @@ export default function ContentEditor({
               </div>
 
               {/* CARD 4 — Feedback (sempre visível, retroalimenta o motor) */}
-              {display && <FeedbackPanel draftId={draft.id} />}
+              {display && (
+                <FeedbackPanel
+                  draftId={draft.id}
+                  onRevised={(d) => {
+                    setDraft(d);
+                    setLocalText(d.draft_markdown ?? "");
+                    setActiveVariation(0);
+                    // rola pra cima pra o líder ver o texto novo
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                />
+              )}
             </>
           )}
         </aside>

@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Loader2, Star } from "lucide-react";
+import { Check, Loader2, RefreshCw, Sparkles, Star, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/client-fetch";
-import type { ContentFeedback } from "@/lib/db/types";
+import type { ContentDraft, ContentFeedback } from "@/lib/db/types";
 
 const RATING_LABELS: Record<number, string> = {
   1: "Ficou ruim",
@@ -16,7 +16,17 @@ const RATING_LABELS: Record<number, string> = {
   5: "Ficou exatamente como queria",
 };
 
-export function FeedbackPanel({ draftId }: { draftId: string }) {
+interface FeedbackPanelProps {
+  draftId: string;
+  /**
+   * Callback opcional — quando o líder clica em "Refazer aplicando o
+   * aprendizado" (gatilho ativo de feedback negativo), o editor recebe
+   * o draft revisado pra atualizar o estado local.
+   */
+  onRevised?: (draft: ContentDraft) => void;
+}
+
+export function FeedbackPanel({ draftId, onRevised }: FeedbackPanelProps) {
   const [existing, setExisting] = useState<ContentFeedback | null>(null);
   const [rating, setRating] = useState<number | null>(null);
   const [hover, setHover] = useState<number | null>(null);
@@ -25,6 +35,10 @@ export function FeedbackPanel({ draftId }: { draftId: string }) {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // Estado do "refazer aplicando o aprendizado"
+  const [showRetry, setShowRetry] = useState(false);
+  const [revising, setRevising] = useState(false);
+  const [retriedDone, setRetriedDone] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -49,6 +63,7 @@ export function FeedbackPanel({ draftId }: { draftId: string }) {
     setBusy(true);
     setError(null);
     setSaved(false);
+    setRetriedDone(false);
     const res = await apiFetch<{ feedback: ContentFeedback }>(
       `/api/content/${draftId}/feedback`,
       {
@@ -60,7 +75,39 @@ export function FeedbackPanel({ draftId }: { draftId: string }) {
     if (res.ok) {
       setExisting(res.data.feedback);
       setSaved(true);
+      // Gatilho ativo: feedback negativo (1-3) + comentário >= 8 chars
+      // → mostra CTA pra refazer aplicando o que foi dito
+      if (rating <= 3 && comment.trim().length >= 8) {
+        setShowRetry(true);
+      } else {
+        setShowRetry(false);
+      }
       setTimeout(() => setSaved(false), 3000);
+    } else {
+      setError(res.error);
+    }
+  }
+
+  async function retryWithFeedback() {
+    if (!comment.trim() || !onRevised) return;
+    setRevising(true);
+    setError(null);
+    const res = await apiFetch<{ draft: ContentDraft }>(
+      "/api/content/revise",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          draft_id: draftId,
+          instructions: `Apliquei esse feedback (nota ${rating}/5): "${comment.trim()}". Reescreve o texto inteiro corrigindo esses pontos. Mantém o tema e o tamanho aproximado.`,
+        }),
+      }
+    );
+    setRevising(false);
+    if (res.ok) {
+      onRevised(res.data.draft);
+      setShowRetry(false);
+      setRetriedDone(true);
+      setTimeout(() => setRetriedDone(false), 4500);
     } else {
       setError(res.error);
     }
@@ -193,10 +240,65 @@ export function FeedbackPanel({ draftId }: { draftId: string }) {
             </div>
           )}
 
-          {saved && (
+          {saved && !showRetry && !retriedDone && (
             <div className="mt-3 rounded-lg border border-brand-200 bg-brand-50/60 p-3 text-xs text-brand-800">
               Salvo. O motor está reaprendendo seu padrão em background. As
               próximas gerações já consideram esse feedback.
+            </div>
+          )}
+
+          {/* GATILHO ATIVO — aparece após feedback negativo com comentário */}
+          {showRetry && onRevised && (
+            <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50/60 p-4">
+              <div className="flex items-start gap-2.5">
+                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+                  <Wand2 className="h-4 w-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-amber-900">
+                    Quer que eu refaça aplicando esse feedback?
+                  </p>
+                  <p className="mt-1 text-xs leading-snug text-amber-900/80">
+                    Vou reescrever o texto inteiro corrigindo o que você
+                    apontou no comentário. Mantém o tema e o tamanho.
+                  </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={retryWithFeedback}
+                      disabled={revising}
+                    >
+                      {revising ? (
+                        <>
+                          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                          Refazendo…
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-3.5 w-3.5" />
+                          Refazer aplicando
+                        </>
+                      )}
+                    </Button>
+                    <button
+                      type="button"
+                      onClick={() => setShowRetry(false)}
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      Agora não
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {retriedDone && (
+            <div className="mt-3 rounded-lg border border-brand-200 bg-brand-50/60 p-3 text-xs text-brand-800">
+              <strong>Texto reescrito.</strong> Sobe pro topo e olha como
+              ficou. Se ainda tiver coisa pra ajustar, dá novo feedback ou
+              usa o "Pedir ajuste" do aside.
             </div>
           )}
 
