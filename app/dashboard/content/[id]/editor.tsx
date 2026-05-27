@@ -35,7 +35,11 @@ import { Markdown, PlainPost } from "@/components/markdown";
 import { InfographicRenderer } from "@/components/visual-renderer";
 import { ReviewPanel } from "@/components/review-panel";
 import { FeedbackPanel } from "@/components/feedback-panel";
-import { StyleScoreCard } from "@/components/style-score-card";
+import {
+  StyleScoreChip,
+  StyleScoreDetails,
+  useStyleScore,
+} from "@/components/style-score-card";
 import { LinkedInPreview } from "@/components/linkedin-preview";
 import { VariationsTabs } from "@/components/variations-tabs";
 import { VersionsHistory } from "@/components/versions-history";
@@ -149,6 +153,19 @@ export default function ContentEditor({
       ? draft.draft_markdown ?? ""
       : alts[activeVariation - 1]?.body ?? draft.draft_markdown ?? "";
   const display = variationText;
+
+  // Hook compartilhado entre chip (aside) e details (main column).
+  // Avalia em tempo real quando muda variação ou texto.
+  const styleScoreState = useStyleScore({
+    draftId: draft.id,
+    initial: activeVariation === 0 ? styleScore : null,
+    body: activeVariation === 0 ? null : variationText,
+    primaryBody: draft.draft_markdown ?? null,
+  });
+  const versionLabel =
+    alts.length > 0
+      ? `Versão ${String.fromCharCode(65 + activeVariation)}`
+      : undefined;
 
   useEffect(() => {
     void loadVisuals();
@@ -557,6 +574,21 @@ export default function ContentEditor({
               </div>
             )}
           </div>
+
+          {/* Sugestões de aderência — aparecem abaixo do conteúdo,
+              full-width no main column, aproveitando o espaço vertical
+              que sobrava quando o draft é curto */}
+          {display &&
+            !editing &&
+            (styleScoreState.score?.matches.length ||
+              styleScoreState.score?.gaps.length) && (
+              <div className="border-t border-border p-6">
+                <StyleScoreDetails
+                  score={styleScoreState.score}
+                  busy={styleScoreState.busy}
+                />
+              </div>
+            )}
         </div>
 
         {/* ============================================================
@@ -579,6 +611,48 @@ export default function ContentEditor({
             </>
           ) : (
             <>
+              {/* CARD 0 — Score chip compacto (acima de tudo, visual rápido) */}
+              {display && (
+                <>
+                  {/* Chip de auto-revisão — só na versão primária */}
+                  {activeVariation === 0 &&
+                    reviewMeta?.voice_match_score != null && (
+                      <div className="rounded-xl border border-border bg-card px-3 py-2 text-xs">
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                          <span className="text-muted-foreground">
+                            Auto-revisão na geração:
+                          </span>
+                          <span
+                            className={cn(
+                              "ml-auto font-mono font-semibold",
+                              reviewMeta.voice_match_score >= 85
+                                ? "text-emerald-600"
+                                : reviewMeta.voice_match_score >= 70
+                                  ? "text-brand-700"
+                                  : "text-amber-600"
+                            )}
+                          >
+                            {reviewMeta.voice_match_score}/100
+                          </span>
+                        </div>
+                        {reviewMeta.voice_notes && (
+                          <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+                            {reviewMeta.voice_notes}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  <StyleScoreChip
+                    score={styleScoreState.score}
+                    busy={styleScoreState.busy}
+                    error={styleScoreState.error}
+                    versionLabel={versionLabel}
+                    onRefresh={() => void styleScoreState.refetch()}
+                  />
+                </>
+              )}
+
               {/* CARD 1 — Pedir ajuste (primary action) */}
               {display && (
                 <div className="rounded-2xl border border-brand-200 bg-card p-5 shadow-sm">
@@ -621,56 +695,6 @@ export default function ContentEditor({
                       </>
                     )}
                   </Button>
-                </div>
-              )}
-
-              {/* CARD 2 — Saúde do texto */}
-              {display && (
-                <div className="space-y-2">
-                  {/* Chip de auto-revisão — só aparece na versão primária
-                      porque review meta foi capturado durante a geração
-                      do texto que VIROU draft_markdown */}
-                  {activeVariation === 0 &&
-                    reviewMeta?.voice_match_score != null && (
-                      <div className="rounded-xl border border-border bg-card px-3 py-2 text-xs">
-                        <div className="flex items-center gap-2">
-                          <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-                          <span className="text-muted-foreground">
-                            Auto-revisão na geração:
-                          </span>
-                          <span
-                            className={cn(
-                              "ml-auto font-mono font-semibold",
-                              reviewMeta.voice_match_score >= 85
-                                ? "text-emerald-600"
-                                : reviewMeta.voice_match_score >= 70
-                                  ? "text-brand-700"
-                                  : "text-amber-600"
-                            )}
-                          >
-                            {reviewMeta.voice_match_score}/100
-                          </span>
-                        </div>
-                        {reviewMeta.voice_notes && (
-                          <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
-                            {reviewMeta.voice_notes}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  <StyleScoreCard
-                    draftId={draft.id}
-                    initial={activeVariation === 0 ? styleScore : null}
-                    body={
-                      activeVariation === 0 ? null : variationText
-                    }
-                    primaryBody={draft.draft_markdown ?? null}
-                    versionLabel={
-                      alts.length > 0
-                        ? `Versão ${String.fromCharCode(65 + activeVariation)}`
-                        : undefined
-                    }
-                  />
                 </div>
               )}
 

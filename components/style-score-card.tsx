@@ -1,46 +1,42 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CheckCircle2, XCircle, Loader2, Sparkles, RefreshCw } from "lucide-react";
+import {
+  CheckCircle2,
+  Loader2,
+  RefreshCw,
+  Sparkles,
+  XCircle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { StyleScore } from "@/lib/db/types";
 
-interface Props {
+interface UseStyleScoreOpts {
   draftId: string;
   initial: StyleScore | null;
-  /**
-   * Texto da variação atual. Se vier, a nota é calculada SOBRE esse
-   * texto (sem persistir). Se for igual ao texto da versão primária,
-   * usa o initial cacheado.
-   */
   body?: string | null;
-  /** "Versão A" / "B" / "C" — mostrado inline pra deixar claro */
-  versionLabel?: string;
-  /** Texto da versão primária — quando body === primary usamos cache */
   primaryBody?: string | null;
 }
 
-export function StyleScoreCard({
-  draftId,
-  initial,
-  body,
-  versionLabel,
-  primaryBody,
-}: Props) {
+/**
+ * Hook que faz fetch da nota e atualiza em tempo real quando o body muda
+ * (mudança de variação A/B/C ou revisão).
+ */
+export function useStyleScore(opts: UseStyleScoreOpts) {
+  const { draftId, initial, body, primaryBody } = opts;
   const [score, setScore] = useState<StyleScore | null>(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const lastScoredText = useRef<string | null>(initial ? primaryBody ?? null : null);
+  const lastScoredText = useRef<string | null>(
+    initial ? primaryBody ?? null : null
+  );
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Atualiza em tempo real quando o body muda (mudança de variação ou
-  // revisão). Debounce de 600ms pra não disparar várias chamadas em
-  // sequência.
   useEffect(() => {
     const target = (body ?? primaryBody ?? "").trim();
     if (!target) return;
-    if (target === lastScoredText.current) return; // já scoreado
+    if (target === lastScoredText.current) return;
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
@@ -76,7 +72,10 @@ export function StyleScoreCard({
     }
   }
 
-  const overall = score?.overall ?? 0;
+  return { score, busy, error, refetch: runScore };
+}
+
+function paletteFor(overall: number) {
   const ringColor =
     overall >= 85
       ? "stroke-brand-600"
@@ -95,125 +94,175 @@ export function StyleScoreCard({
       : overall >= 60
         ? "Ok, mas tem ajuste"
         : "Saiu fora do seu padrão";
+  return { ringColor, labelColor, verdict };
+}
+
+/**
+ * Chip compacto da nota — só anel + verdict. Vai no aside.
+ */
+export function StyleScoreChip({
+  score,
+  busy,
+  error,
+  versionLabel,
+  onRefresh,
+}: {
+  score: StyleScore | null;
+  busy: boolean;
+  error: string | null;
+  versionLabel?: string;
+  onRefresh: () => void;
+}) {
+  const overall = score?.overall ?? 0;
+  const { ringColor, labelColor, verdict } = paletteFor(overall);
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-      <div className="flex items-center justify-between gap-3">
+    <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <div className="flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          <Sparkles className="h-4 w-4 shrink-0 text-brand-600" />
-          <h3 className="truncate text-sm font-medium">
+          <Sparkles className="h-3.5 w-3.5 shrink-0 text-brand-600" />
+          <h3 className="truncate text-xs font-medium uppercase tracking-wide text-muted-foreground">
             Aderência ao seu estilo
           </h3>
-          {versionLabel && (
-            <span className="inline-flex shrink-0 items-center rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-medium text-brand-700">
-              {versionLabel}
-            </span>
-          )}
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => void runScore()}
+        <button
+          type="button"
+          onClick={onRefresh}
           disabled={busy}
           title="Reavaliar"
+          className="rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground disabled:opacity-50"
         >
           {busy ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
             <RefreshCw className="h-3.5 w-3.5" />
           )}
-        </Button>
+        </button>
       </div>
 
       {busy && !score && (
-        <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Comparando com seu perfil…
+        <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Comparando…
         </div>
       )}
 
-      {error && (
+      {error && !score && (
         <p className="mt-3 text-xs text-destructive">{error}</p>
       )}
 
       {score && (
-        <div className="mt-4 space-y-4">
-          {/* Anel + nota */}
-          <div className="flex items-center gap-4">
-            <div className="relative h-20 w-20 shrink-0">
-              <svg className="h-20 w-20 -rotate-90" viewBox="0 0 36 36">
-                <circle
-                  cx="18"
-                  cy="18"
-                  r="15.915"
-                  className="fill-none stroke-secondary"
-                  strokeWidth="3"
-                />
-                <circle
-                  cx="18"
-                  cy="18"
-                  r="15.915"
-                  className={cn("fill-none transition-all", ringColor)}
-                  strokeWidth="3"
-                  strokeDasharray={`${overall}, 100`}
-                  strokeLinecap="round"
-                />
-              </svg>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className={cn("font-display text-xl font-semibold", labelColor)}>
-                  {overall}
-                </span>
-              </div>
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className={cn("font-medium text-sm", labelColor)}>{verdict}</p>
-              <p className="mt-1 text-[10px] text-muted-foreground">
-                Comparado com seu tom, padrões aprendidos e regras de NUNCA
-                escreveria.
-              </p>
+        <div className="mt-3 flex items-center gap-3">
+          <div className="relative h-14 w-14 shrink-0">
+            <svg className="h-14 w-14 -rotate-90" viewBox="0 0 36 36">
+              <circle
+                cx="18"
+                cy="18"
+                r="15.915"
+                className="fill-none stroke-secondary"
+                strokeWidth="3"
+              />
+              <circle
+                cx="18"
+                cy="18"
+                r="15.915"
+                className={cn("fill-none transition-all", ringColor)}
+                strokeWidth="3"
+                strokeDasharray={`${overall}, 100`}
+                strokeLinecap="round"
+              />
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span
+                className={cn("font-display text-base font-semibold", labelColor)}
+              >
+                {overall}
+              </span>
             </div>
           </div>
-
-          {/* Matches */}
-          {score.matches.length > 0 && (
-            <div>
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                O que casou ({score.matches.length})
-              </p>
-              <ul className="mt-2 space-y-1.5">
-                {score.matches.map((m, i) => (
-                  <li
-                    key={i}
-                    className="flex items-start gap-2 text-xs text-foreground/80"
-                  >
-                    <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-brand-600" />
-                    <span>{m}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Gaps */}
-          {score.gaps.length > 0 && (
-            <div>
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                O que escapou ({score.gaps.length})
-              </p>
-              <ul className="mt-2 space-y-1.5">
-                {score.gaps.map((g, i) => (
-                  <li
-                    key={i}
-                    className="flex items-start gap-2 text-xs text-foreground/80"
-                  >
-                    <XCircle className="mt-0.5 h-3 w-3 shrink-0 text-destructive" />
-                    <span>{g}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          <div className="min-w-0 flex-1">
+            <p className={cn("text-sm font-medium leading-tight", labelColor)}>
+              {verdict}
+            </p>
+            {versionLabel && (
+              <span className="mt-1 inline-flex items-center rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-medium text-brand-700">
+                {versionLabel}
+              </span>
+            )}
+          </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Detalhes da nota — listas de "o que casou" e "o que escapou".
+ * Vai no main column embaixo do conteúdo. Aproveita espaço horizontal.
+ */
+export function StyleScoreDetails({
+  score,
+  busy,
+}: {
+  score: StyleScore | null;
+  busy: boolean;
+}) {
+  if (!score && !busy) return null;
+  if (!score) return null;
+  const { matches, gaps } = score;
+  if (matches.length === 0 && gaps.length === 0) return null;
+
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <Sparkles className="h-4 w-4 text-brand-600" />
+        <h3 className="text-sm font-medium">
+          Sugestões de aderência ao seu estilo
+        </h3>
+      </div>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Análise contra seu tom, padrões aprendidos e regras de NUNCA escreveria.
+      </p>
+
+      <div className="mt-4 grid gap-5 md:grid-cols-2">
+        {matches.length > 0 && (
+          <div>
+            <p className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-brand-700">
+              <CheckCircle2 className="h-3 w-3" />
+              O que casou ({matches.length})
+            </p>
+            <ul className="mt-2 space-y-1.5">
+              {matches.map((m, i) => (
+                <li
+                  key={i}
+                  className="flex items-start gap-2 text-xs leading-snug text-foreground/85"
+                >
+                  <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-brand-600" />
+                  <span>{m}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {gaps.length > 0 && (
+          <div>
+            <p className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-destructive">
+              <XCircle className="h-3 w-3" />
+              O que escapou ({gaps.length})
+            </p>
+            <ul className="mt-2 space-y-1.5">
+              {gaps.map((g, i) => (
+                <li
+                  key={i}
+                  className="flex items-start gap-2 text-xs leading-snug text-foreground/85"
+                >
+                  <XCircle className="mt-0.5 h-3 w-3 shrink-0 text-destructive" />
+                  <span>{g}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
