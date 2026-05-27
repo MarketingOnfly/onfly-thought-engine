@@ -9,6 +9,7 @@ import BroadcastsPanel from "./broadcasts-panel";
 import AdminsPanel from "./admins-panel";
 import ComparePanel from "./compare-panel";
 import HeatmapPanel from "./heatmap-panel";
+import LearningPanel from "./learning-panel";
 
 export type LeaderLite = {
   user_id: string;
@@ -34,6 +35,7 @@ export default function AdminTabs({
     <Tabs defaultValue="leaders" className="mt-8">
       <TabsList>
         <TabsTrigger value="leaders">Líderes</TabsTrigger>
+        <TabsTrigger value="learning">Aprendizado</TabsTrigger>
         <TabsTrigger value="compare">Comparativo</TabsTrigger>
         <TabsTrigger value="heatmap">Heatmap</TabsTrigger>
         <TabsTrigger value="campaigns">
@@ -46,6 +48,10 @@ export default function AdminTabs({
 
       <TabsContent value="leaders">
         <LeadersPanel />
+      </TabsContent>
+
+      <TabsContent value="learning">
+        <LearningPanel />
       </TabsContent>
 
       <TabsContent value="compare">
