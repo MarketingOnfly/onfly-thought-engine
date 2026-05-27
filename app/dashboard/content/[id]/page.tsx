@@ -31,7 +31,7 @@ export default async function ContentDetail({
   if (error || !data) notFound();
 
   return (
-    <div className="container max-w-4xl px-6 py-10">
+    <div className="container max-w-5xl px-6 py-10">
       <Link
         href="/dashboard/library"
         className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"

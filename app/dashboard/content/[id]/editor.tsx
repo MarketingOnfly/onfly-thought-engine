@@ -642,144 +642,152 @@ export default function ContentEditor({
                 )}
               </div>
 
-              {/* SECUNDÁRIOS — tabs */}
-              {display && (
-                <div className="rounded-2xl border border-border bg-card p-2 shadow-sm">
-                  <Tabs
-                    value={secondaryTab}
-                    onValueChange={(v) =>
-                      setSecondaryTab(v as SecondaryTab)
-                    }
-                  >
-                    <TabsList className="grid h-auto w-full grid-cols-4 gap-0.5 rounded-lg bg-muted p-1 text-[11px]">
-                      <TabsTrigger
-                        value="versions"
-                        className="rounded-md px-1 py-1.5 text-[11px]"
-                        title="Versões"
-                      >
-                        <History className="h-3 w-3" />
-                      </TabsTrigger>
-                      <TabsTrigger
-                        value="feedback"
-                        className="rounded-md px-1 py-1.5 text-[11px]"
-                        title="Feedback"
-                      >
-                        <MessageSquare className="h-3 w-3" />
-                      </TabsTrigger>
-                      <TabsTrigger
-                        value="visuals"
-                        className="rounded-md px-1 py-1.5 text-[11px]"
-                        title="Infográfico"
-                      >
-                        <ImageIcon className="h-3 w-3" />
-                      </TabsTrigger>
-                      <TabsTrigger
-                        value="asks"
-                        className="rounded-md px-1 py-1.5 text-[11px]"
-                        title="O que você pediu"
-                      >
-                        <LayoutGrid className="h-3 w-3" />
-                      </TabsTrigger>
-                    </TabsList>
-
-                    <TabsContent value="versions" className="mt-2 p-2">
-                      <VersionsHistory
-                        draftId={draft.id}
-                        onRestored={(body) => {
-                          setDraft((d) => ({ ...d, draft_markdown: body }));
-                          setLocalText(body);
-                          setActiveVariation(0);
-                        }}
-                      />
-                    </TabsContent>
-
-                    <TabsContent value="feedback" className="mt-2 p-2">
-                      <FeedbackPanel draftId={draft.id} />
-                    </TabsContent>
-
-                    <TabsContent value="visuals" className="mt-2 px-2 pb-2">
-                      <h4 className="flex items-center gap-2 text-sm font-medium">
-                        <ImageIcon className="h-3.5 w-3.5 text-brand-600" />
-                        Gerar infográfico
-                      </h4>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Escolha um modelo. O motor desenha no padrão Onfly.
-                      </p>
-                      <div className="mt-3 space-y-1">
-                        {ARCHETYPES.map((a) => {
-                          const isGen = generatingArchetype === a.key;
-                          return (
-                            <button
-                              key={a.key}
-                              type="button"
-                              onClick={() => generateInfographic(a.key)}
-                              disabled={generatingArchetype !== null}
-                              className="flex w-full items-start gap-2 rounded-lg p-2 text-left transition hover:bg-secondary disabled:opacity-50"
-                            >
-                              {isGen ? (
-                                <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-brand-600" />
-                              ) : (
-                                <a.icon className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" />
-                              )}
-                              <div className="min-w-0">
-                                <p className="text-xs font-medium leading-tight">
-                                  {a.label}
-                                </p>
-                                <p className="text-[10px] leading-tight text-muted-foreground">
-                                  {a.description}
-                                </p>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                      {infographics.length > 0 && (
-                        <p className="mt-3 text-[10px] text-muted-foreground">
-                          {infographics.length} infográfico
-                          {infographics.length > 1 ? "s" : ""} gerado
-                          {infographics.length > 1 ? "s" : ""} — veja no fim
-                          da página.
-                        </p>
-                      )}
-                    </TabsContent>
-
-                    <TabsContent value="asks" className="mt-2 px-2 pb-2">
-                      <h4 className="text-sm font-medium">
-                        O que você já pediu pra mudar
-                      </h4>
-                      {revisions.length > 0 ? (
-                        <ul className="mt-3 space-y-2 text-xs">
-                          {revisions
-                            .slice()
-                            .reverse()
-                            .map((r, i) => (
-                              <li
-                                key={i}
-                                className="rounded-lg bg-secondary/50 p-2"
-                              >
-                                <p className="font-mono text-[10px] text-muted-foreground">
-                                  {formatDate(r.at)}
-                                </p>
-                                <p className="mt-1 leading-snug">
-                                  {r.instructions}
-                                </p>
-                              </li>
-                            ))}
-                        </ul>
-                      ) : (
-                        <p className="mt-3 text-xs text-muted-foreground">
-                          Nada pedido ainda. Use o card{" "}
-                          <em>Pedir ajuste</em> acima pra refinar.
-                        </p>
-                      )}
-                    </TabsContent>
-                  </Tabs>
-                </div>
-              )}
             </>
           )}
         </aside>
       </div>
+
+      {/* ============================================================
+          SECUNDÁRIOS — tabs full-width abaixo do conteúdo principal
+          (Versões, Feedback, Infográfico, Pedidos)
+         ============================================================ */}
+      {display && !editing && !focusMode && (
+        <section className="mt-10 rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <Tabs
+            value={secondaryTab}
+            onValueChange={(v) => setSecondaryTab(v as SecondaryTab)}
+          >
+            <TabsList className="inline-flex h-auto w-auto flex-wrap gap-1 rounded-lg bg-muted p-1">
+              <TabsTrigger
+                value="versions"
+                className="gap-1.5 rounded-md px-3 py-1.5 text-xs"
+              >
+                <History className="h-3.5 w-3.5" />
+                Versões
+              </TabsTrigger>
+              <TabsTrigger
+                value="feedback"
+                className="gap-1.5 rounded-md px-3 py-1.5 text-xs"
+              >
+                <MessageSquare className="h-3.5 w-3.5" />
+                Feedback
+              </TabsTrigger>
+              <TabsTrigger
+                value="visuals"
+                className="gap-1.5 rounded-md px-3 py-1.5 text-xs"
+              >
+                <ImageIcon className="h-3.5 w-3.5" />
+                Infográfico
+                {infographics.length > 0 && (
+                  <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-100 px-1 text-[10px] font-semibold text-brand-700">
+                    {infographics.length}
+                  </span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger
+                value="asks"
+                className="gap-1.5 rounded-md px-3 py-1.5 text-xs"
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+                Pedidos anteriores
+                {revisions.length > 0 && (
+                  <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-muted px-1 text-[10px] font-medium text-muted-foreground">
+                    {revisions.length}
+                  </span>
+                )}
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="versions" className="mt-4 px-1">
+              <VersionsHistory
+                draftId={draft.id}
+                onRestored={(body) => {
+                  setDraft((d) => ({ ...d, draft_markdown: body }));
+                  setLocalText(body);
+                  setActiveVariation(0);
+                }}
+              />
+            </TabsContent>
+
+            <TabsContent value="feedback" className="mt-4 px-1">
+              <FeedbackPanel draftId={draft.id} />
+            </TabsContent>
+
+            <TabsContent value="visuals" className="mt-4 px-1">
+              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                <div className="md:col-span-2 lg:col-span-3">
+                  <h4 className="flex items-center gap-2 text-sm font-medium">
+                    <ImageIcon className="h-3.5 w-3.5 text-brand-600" />
+                    Gerar infográfico
+                  </h4>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Escolha um modelo. O motor desenha no padrão Onfly.
+                  </p>
+                </div>
+                {ARCHETYPES.map((a) => {
+                  const isGen = generatingArchetype === a.key;
+                  return (
+                    <button
+                      key={a.key}
+                      type="button"
+                      onClick={() => generateInfographic(a.key)}
+                      disabled={generatingArchetype !== null}
+                      className="flex items-start gap-2 rounded-xl border border-border bg-background p-3 text-left transition hover:border-brand-300 hover:bg-secondary disabled:opacity-50"
+                    >
+                      {isGen ? (
+                        <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-brand-600" />
+                      ) : (
+                        <a.icon className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" />
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium leading-tight">
+                          {a.label}
+                        </p>
+                        <p className="mt-0.5 text-[10px] leading-tight text-muted-foreground">
+                          {a.description}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              {infographics.length > 0 && (
+                <p className="mt-3 text-[10px] text-muted-foreground">
+                  {infographics.length} infográfico
+                  {infographics.length > 1 ? "s" : ""} gerado
+                  {infographics.length > 1 ? "s" : ""} — veja abaixo.
+                </p>
+              )}
+            </TabsContent>
+
+            <TabsContent value="asks" className="mt-4 px-1">
+              <h4 className="text-sm font-medium">
+                O que você já pediu pra mudar
+              </h4>
+              {revisions.length > 0 ? (
+                <ul className="mt-3 space-y-2 text-xs">
+                  {revisions
+                    .slice()
+                    .reverse()
+                    .map((r, i) => (
+                      <li key={i} className="rounded-lg bg-secondary/50 p-3">
+                        <p className="font-mono text-[10px] text-muted-foreground">
+                          {formatDate(r.at)}
+                        </p>
+                        <p className="mt-1 leading-snug">{r.instructions}</p>
+                      </li>
+                    ))}
+                </ul>
+              ) : (
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Nada pedido ainda. Use o card <em>Pedir ajuste</em> no
+                  topo pra refinar.
+                </p>
+              )}
+            </TabsContent>
+          </Tabs>
+        </section>
+      )}
 
       {/* Infográficos renderizados embaixo da página */}
       {infographics.length > 0 && (
