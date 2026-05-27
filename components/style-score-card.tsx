@@ -6,6 +6,7 @@ import {
   Loader2,
   RefreshCw,
   Sparkles,
+  Wand2,
   XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -212,14 +213,21 @@ export function StyleScoreChip({
 /**
  * Detalhes da nota — listas de "o que casou" e "o que escapou".
  * Vai no main column embaixo do conteúdo. Aproveita espaço horizontal.
+ *
+ * Quando recebe `onRefine`, mostra um botão no fim que dispara uma
+ * revisão automática usando as listas: corrige o que escapou,
+ * preserva o que casou.
  */
 export function StyleScoreDetails({
   score,
   busy,
+  onRefine,
 }: {
   score: StyleScore | null;
   busy: boolean;
+  onRefine?: (instructions: string) => Promise<void>;
 }) {
+  const [refining, setRefining] = useState(false);
   // Estado "recalculando" — sem score mas trabalhando. Mostra placeholder
   // pra deixar claro que tá atualizando (após troca de variação).
   if (!score && busy) {
@@ -306,6 +314,70 @@ export function StyleScoreDetails({
           </div>
         )}
       </div>
+
+      {/* Botão "Refinar automaticamente" — usa matches + gaps pra montar
+          uma instrução de revisão que preserva o que casou e corrige o
+          que escapou. Só aparece quando onRefine foi passado + tem
+          conteúdo nas listas. */}
+      {onRefine && (matches.length > 0 || gaps.length > 0) && (
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+          <p className="text-xs text-muted-foreground">
+            Aplica as sugestões automaticamente no texto — mantém o que
+            já tá no seu estilo, ajusta o que escapou.
+          </p>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={refining || busy}
+            onClick={async () => {
+              setRefining(true);
+              try {
+                const instructions = buildRefineInstructions(matches, gaps);
+                await onRefine(instructions);
+              } finally {
+                setRefining(false);
+              }
+            }}
+          >
+            {refining ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Refinando…
+              </>
+            ) : (
+              <>
+                <Wand2 className="h-3.5 w-3.5" />
+                Refinar com base nas sugestões
+              </>
+            )}
+          </Button>
+        </div>
+      )}
     </div>
   );
+}
+
+/**
+ * Monta o texto de instrução pro endpoint de revisão a partir das
+ * listas de matches (manter) e gaps (corrigir). Formato direto pra o
+ * modelo executar.
+ */
+function buildRefineInstructions(matches: string[], gaps: string[]): string {
+  const parts: string[] = [];
+  if (gaps.length > 0) {
+    parts.push(
+      "CORRIGE os seguintes pontos que escaparam do meu estilo:\n" +
+        gaps.map((g, i) => `  ${i + 1}. ${g}`).join("\n")
+    );
+  }
+  if (matches.length > 0) {
+    parts.push(
+      "PRESERVA esses pontos que já estão no meu estilo (não mexa neles):\n" +
+        matches.map((m, i) => `  ${i + 1}. ${m}`).join("\n")
+    );
+  }
+  parts.push(
+    "Mantém o tema central e o tamanho aproximado. Não reescreve do zero — ajusta cirurgicamente as partes que escaparam."
+  );
+  return parts.join("\n\n");
 }

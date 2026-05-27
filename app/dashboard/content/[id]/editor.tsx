@@ -708,6 +708,12 @@ export default function ContentEditor({
                 <StyleScoreDetails
                   score={styleScoreState.score}
                   busy={styleScoreState.busy}
+                  onRefine={async (instructions) => {
+                    // Reusa o fluxo de revise() — passa as instruções
+                    // montadas pelas listas de matches/gaps. Como é
+                    // um "preset", scroll pro topo após refinar.
+                    await revise(instructions);
+                  }}
                 />
               </div>
             )}
