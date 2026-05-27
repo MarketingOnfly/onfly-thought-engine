@@ -9,6 +9,7 @@ import {
   Copy,
   Eye,
   FileCode,
+  FileText,
   GitBranch,
   Grid3x3,
   History,
@@ -30,7 +31,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Markdown, PlainPost } from "@/components/markdown";
 import { InfographicRenderer } from "@/components/visual-renderer";
 import { ReviewPanel } from "@/components/review-panel";
@@ -94,7 +94,7 @@ const ARCHETYPES: {
   },
 ];
 
-type SecondaryTab = "versions" | "feedback" | "visuals" | "asks";
+type PageTab = "content" | "versions" | "feedback" | "visuals" | "asks";
 
 interface ReviewMeta {
   voice_match_score?: number;
@@ -131,7 +131,7 @@ export default function ContentEditor({
     initial.format === "linkedin_post" ? "preview" : "raw"
   );
   const [focusMode, setFocusMode] = useState(false);
-  const [secondaryTab, setSecondaryTab] = useState<SecondaryTab>("versions");
+  const [pageTab, setPageTab] = useState<PageTab>("content");
   const confirm = useConfirm();
 
   const isPost = draft.format === "linkedin_post";
@@ -367,10 +367,74 @@ export default function ContentEditor({
         </p>
       )}
 
+      {/* TAB STRIP — navegação primária da página */}
+      {display && !editing && !focusMode && (
+        <div className="mt-6 border-b border-border">
+          <nav className="-mb-px flex flex-wrap gap-1 overflow-x-auto">
+            {(
+              [
+                { key: "content", label: "Conteúdo", icon: FileText },
+                {
+                  key: "versions",
+                  label: "Versões",
+                  icon: History,
+                  count: undefined,
+                },
+                { key: "feedback", label: "Feedback", icon: MessageSquare },
+                {
+                  key: "visuals",
+                  label: "Infográfico",
+                  icon: ImageIcon,
+                  count: infographics.length || undefined,
+                },
+                {
+                  key: "asks",
+                  label: "Pedidos",
+                  icon: LayoutGrid,
+                  count: revisions.length || undefined,
+                },
+              ] as const
+            ).map((tab) => {
+              const TabIcon = tab.icon;
+              const active = pageTab === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setPageTab(tab.key as PageTab)}
+                  className={cn(
+                    "inline-flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors",
+                    active
+                      ? "border-brand-500 text-brand-700"
+                      : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
+                  )}
+                >
+                  <TabIcon className="h-3.5 w-3.5" />
+                  {tab.label}
+                  {"count" in tab && tab.count != null && (
+                    <span
+                      className={cn(
+                        "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold",
+                        active
+                          ? "bg-brand-100 text-brand-700"
+                          : "bg-muted text-muted-foreground"
+                      )}
+                    >
+                      {tab.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+      )}
+
       <div
         className={cn(
-          "mt-8 grid gap-6",
-          focusMode ? "grid-cols-1" : "lg:grid-cols-[1fr_340px]"
+          "mt-6 grid gap-6",
+          focusMode ? "grid-cols-1" : "lg:grid-cols-[1fr_340px]",
+          pageTab !== "content" && !editing && !focusMode && "hidden"
         )}
       >
         {/* ============================================================
@@ -564,34 +628,50 @@ export default function ContentEditor({
               {/* CARD 2 — Saúde do texto */}
               {display && (
                 <div className="space-y-2">
-                  {reviewMeta?.voice_match_score != null && (
-                    <div className="rounded-xl border border-border bg-card px-3 py-2 text-xs">
-                      <div className="flex items-center gap-2">
-                        <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-                        <span className="text-muted-foreground">
-                          Auto-revisão na geração:
-                        </span>
-                        <span
-                          className={cn(
-                            "ml-auto font-mono font-semibold",
-                            reviewMeta.voice_match_score >= 85
-                              ? "text-emerald-600"
-                              : reviewMeta.voice_match_score >= 70
-                                ? "text-brand-700"
-                                : "text-amber-600"
-                          )}
-                        >
-                          {reviewMeta.voice_match_score}/100
-                        </span>
+                  {/* Chip de auto-revisão — só aparece na versão primária
+                      porque review meta foi capturado durante a geração
+                      do texto que VIROU draft_markdown */}
+                  {activeVariation === 0 &&
+                    reviewMeta?.voice_match_score != null && (
+                      <div className="rounded-xl border border-border bg-card px-3 py-2 text-xs">
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                          <span className="text-muted-foreground">
+                            Auto-revisão na geração:
+                          </span>
+                          <span
+                            className={cn(
+                              "ml-auto font-mono font-semibold",
+                              reviewMeta.voice_match_score >= 85
+                                ? "text-emerald-600"
+                                : reviewMeta.voice_match_score >= 70
+                                  ? "text-brand-700"
+                                  : "text-amber-600"
+                            )}
+                          >
+                            {reviewMeta.voice_match_score}/100
+                          </span>
+                        </div>
+                        {reviewMeta.voice_notes && (
+                          <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+                            {reviewMeta.voice_notes}
+                          </p>
+                        )}
                       </div>
-                      {reviewMeta.voice_notes && (
-                        <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
-                          {reviewMeta.voice_notes}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                  <StyleScoreCard draftId={draft.id} initial={styleScore} />
+                    )}
+                  <StyleScoreCard
+                    draftId={draft.id}
+                    initial={activeVariation === 0 ? styleScore : null}
+                    body={
+                      activeVariation === 0 ? null : variationText
+                    }
+                    primaryBody={draft.draft_markdown ?? null}
+                    versionLabel={
+                      alts.length > 0
+                        ? `Versão ${String.fromCharCode(65 + activeVariation)}`
+                        : undefined
+                    }
+                  />
                 </div>
               )}
 
@@ -648,149 +728,101 @@ export default function ContentEditor({
       </div>
 
       {/* ============================================================
-          SECUNDÁRIOS — tabs full-width abaixo do conteúdo principal
-          (Versões, Feedback, Infográfico, Pedidos)
+          OUTRAS TABS — renderizadas full-width quando ativas
          ============================================================ */}
-      {display && !editing && !focusMode && (
-        <section className="mt-10 rounded-2xl border border-border bg-card p-4 shadow-sm">
-          <Tabs
-            value={secondaryTab}
-            onValueChange={(v) => setSecondaryTab(v as SecondaryTab)}
-          >
-            <TabsList className="inline-flex h-auto w-auto flex-wrap gap-1 rounded-lg bg-muted p-1">
-              <TabsTrigger
-                value="versions"
-                className="gap-1.5 rounded-md px-3 py-1.5 text-xs"
-              >
-                <History className="h-3.5 w-3.5" />
-                Versões
-              </TabsTrigger>
-              <TabsTrigger
-                value="feedback"
-                className="gap-1.5 rounded-md px-3 py-1.5 text-xs"
-              >
-                <MessageSquare className="h-3.5 w-3.5" />
-                Feedback
-              </TabsTrigger>
-              <TabsTrigger
-                value="visuals"
-                className="gap-1.5 rounded-md px-3 py-1.5 text-xs"
-              >
-                <ImageIcon className="h-3.5 w-3.5" />
-                Infográfico
-                {infographics.length > 0 && (
-                  <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-100 px-1 text-[10px] font-semibold text-brand-700">
-                    {infographics.length}
-                  </span>
-                )}
-              </TabsTrigger>
-              <TabsTrigger
-                value="asks"
-                className="gap-1.5 rounded-md px-3 py-1.5 text-xs"
-              >
-                <LayoutGrid className="h-3.5 w-3.5" />
-                Pedidos anteriores
-                {revisions.length > 0 && (
-                  <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-muted px-1 text-[10px] font-medium text-muted-foreground">
-                    {revisions.length}
-                  </span>
-                )}
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="versions" className="mt-4 px-1">
-              <VersionsHistory
-                draftId={draft.id}
-                onRestored={(body) => {
-                  setDraft((d) => ({ ...d, draft_markdown: body }));
-                  setLocalText(body);
-                  setActiveVariation(0);
-                }}
-              />
-            </TabsContent>
-
-            <TabsContent value="feedback" className="mt-4 px-1">
-              <FeedbackPanel draftId={draft.id} />
-            </TabsContent>
-
-            <TabsContent value="visuals" className="mt-4 px-1">
-              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                <div className="md:col-span-2 lg:col-span-3">
-                  <h4 className="flex items-center gap-2 text-sm font-medium">
-                    <ImageIcon className="h-3.5 w-3.5 text-brand-600" />
-                    Gerar infográfico
-                  </h4>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Escolha um modelo. O motor desenha no padrão Onfly.
-                  </p>
-                </div>
-                {ARCHETYPES.map((a) => {
-                  const isGen = generatingArchetype === a.key;
-                  return (
-                    <button
-                      key={a.key}
-                      type="button"
-                      onClick={() => generateInfographic(a.key)}
-                      disabled={generatingArchetype !== null}
-                      className="flex items-start gap-2 rounded-xl border border-border bg-background p-3 text-left transition hover:border-brand-300 hover:bg-secondary disabled:opacity-50"
-                    >
-                      {isGen ? (
-                        <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-brand-600" />
-                      ) : (
-                        <a.icon className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" />
-                      )}
-                      <div className="min-w-0">
-                        <p className="text-xs font-medium leading-tight">
-                          {a.label}
-                        </p>
-                        <p className="mt-0.5 text-[10px] leading-tight text-muted-foreground">
-                          {a.description}
-                        </p>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-              {infographics.length > 0 && (
-                <p className="mt-3 text-[10px] text-muted-foreground">
-                  {infographics.length} infográfico
-                  {infographics.length > 1 ? "s" : ""} gerado
-                  {infographics.length > 1 ? "s" : ""} — veja abaixo.
-                </p>
-              )}
-            </TabsContent>
-
-            <TabsContent value="asks" className="mt-4 px-1">
-              <h4 className="text-sm font-medium">
-                O que você já pediu pra mudar
-              </h4>
-              {revisions.length > 0 ? (
-                <ul className="mt-3 space-y-2 text-xs">
-                  {revisions
-                    .slice()
-                    .reverse()
-                    .map((r, i) => (
-                      <li key={i} className="rounded-lg bg-secondary/50 p-3">
-                        <p className="font-mono text-[10px] text-muted-foreground">
-                          {formatDate(r.at)}
-                        </p>
-                        <p className="mt-1 leading-snug">{r.instructions}</p>
-                      </li>
-                    ))}
-                </ul>
-              ) : (
-                <p className="mt-3 text-xs text-muted-foreground">
-                  Nada pedido ainda. Use o card <em>Pedir ajuste</em> no
-                  topo pra refinar.
-                </p>
-              )}
-            </TabsContent>
-          </Tabs>
+      {display && !editing && !focusMode && pageTab === "versions" && (
+        <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-sm">
+          <VersionsHistory
+            draftId={draft.id}
+            onRestored={(body) => {
+              setDraft((d) => ({ ...d, draft_markdown: body }));
+              setLocalText(body);
+              setActiveVariation(0);
+              setPageTab("content");
+            }}
+          />
         </section>
       )}
 
-      {/* Infográficos renderizados embaixo da página */}
-      {infographics.length > 0 && (
+      {display && !editing && !focusMode && pageTab === "feedback" && (
+        <section className="mt-6 max-w-2xl">
+          <FeedbackPanel draftId={draft.id} />
+        </section>
+      )}
+
+      {display && !editing && !focusMode && pageTab === "visuals" && (
+        <section className="mt-6 space-y-4">
+          <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+            <h4 className="flex items-center gap-2 text-sm font-medium">
+              <ImageIcon className="h-4 w-4 text-brand-600" />
+              Gerar infográfico
+            </h4>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Escolha um modelo. O motor desenha no padrão Onfly.
+            </p>
+            <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {ARCHETYPES.map((a) => {
+                const isGen = generatingArchetype === a.key;
+                return (
+                  <button
+                    key={a.key}
+                    type="button"
+                    onClick={() => generateInfographic(a.key)}
+                    disabled={generatingArchetype !== null}
+                    className="flex items-start gap-2 rounded-xl border border-border bg-background p-3 text-left transition hover:border-brand-300 hover:bg-secondary disabled:opacity-50"
+                  >
+                    {isGen ? (
+                      <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-brand-600" />
+                    ) : (
+                      <a.icon className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium leading-tight">
+                        {a.label}
+                      </p>
+                      <p className="mt-0.5 text-[10px] leading-tight text-muted-foreground">
+                        {a.description}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {display && !editing && !focusMode && pageTab === "asks" && (
+        <section className="mt-6 rounded-2xl border border-border bg-card p-5 shadow-sm max-w-2xl">
+          <h4 className="flex items-center gap-2 text-sm font-medium">
+            <LayoutGrid className="h-4 w-4 text-brand-600" />
+            O que você já pediu pra mudar
+          </h4>
+          {revisions.length > 0 ? (
+            <ul className="mt-4 space-y-2 text-xs">
+              {revisions
+                .slice()
+                .reverse()
+                .map((r, i) => (
+                  <li key={i} className="rounded-lg bg-secondary/50 p-3">
+                    <p className="font-mono text-[10px] text-muted-foreground">
+                      {formatDate(r.at)}
+                    </p>
+                    <p className="mt-1 leading-snug">{r.instructions}</p>
+                  </li>
+                ))}
+            </ul>
+          ) : (
+            <p className="mt-3 text-xs text-muted-foreground">
+              Nada pedido ainda. Volta na tab <strong>Conteúdo</strong> e
+              usa o card <em>Pedir ajuste</em>.
+            </p>
+          )}
+        </section>
+      )}
+
+      {/* Infográficos renderizados embaixo (só na tab Infográfico) */}
+      {pageTab === "visuals" && infographics.length > 0 && (
         <section className="mt-10">
           <h2 className="font-display text-2xl tracking-tight">Infográficos</h2>
           <div className="mt-4 space-y-6">

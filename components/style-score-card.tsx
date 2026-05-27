@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, XCircle, Loader2, Sparkles, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -9,31 +9,64 @@ import type { StyleScore } from "@/lib/db/types";
 interface Props {
   draftId: string;
   initial: StyleScore | null;
+  /**
+   * Texto da variação atual. Se vier, a nota é calculada SOBRE esse
+   * texto (sem persistir). Se for igual ao texto da versão primária,
+   * usa o initial cacheado.
+   */
+  body?: string | null;
+  /** "Versão A" / "B" / "C" — mostrado inline pra deixar claro */
+  versionLabel?: string;
+  /** Texto da versão primária — quando body === primary usamos cache */
+  primaryBody?: string | null;
 }
 
-export function StyleScoreCard({ draftId, initial }: Props) {
+export function StyleScoreCard({
+  draftId,
+  initial,
+  body,
+  versionLabel,
+  primaryBody,
+}: Props) {
   const [score, setScore] = useState<StyleScore | null>(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const lastScoredText = useRef<string | null>(initial ? primaryBody ?? null : null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Roda auto-score se ainda não tem
+  // Atualiza em tempo real quando o body muda (mudança de variação ou
+  // revisão). Debounce de 600ms pra não disparar várias chamadas em
+  // sequência.
   useEffect(() => {
-    if (!score) {
-      void runScore();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const target = (body ?? primaryBody ?? "").trim();
+    if (!target) return;
+    if (target === lastScoredText.current) return; // já scoreado
 
-  async function runScore() {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      void runScore(target);
+    }, 600);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [body, primaryBody]);
+
+  async function runScore(targetText?: string) {
     setBusy(true);
     setError(null);
     try {
+      const text = targetText ?? body ?? primaryBody ?? null;
+      const isOverride = !!body && body !== primaryBody;
       const res = await fetch(`/api/content/${draftId}/score`, {
         method: "POST",
+        headers: { "content-type": "application/json" },
+        body: isOverride ? JSON.stringify({ body: text }) : "",
       });
       if (res.ok) {
         const data = await res.json();
         setScore(data.score);
+        lastScoredText.current = text ?? null;
       } else {
         const data = await res.json().catch(() => ({}));
         setError(data.error ?? "Falha ao avaliar.");
@@ -66,14 +99,21 @@ export function StyleScoreCard({ draftId, initial }: Props) {
   return (
     <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-brand-600" />
-          <h3 className="text-sm font-medium">Aderência ao seu estilo</h3>
+        <div className="flex min-w-0 items-center gap-2">
+          <Sparkles className="h-4 w-4 shrink-0 text-brand-600" />
+          <h3 className="truncate text-sm font-medium">
+            Aderência ao seu estilo
+          </h3>
+          {versionLabel && (
+            <span className="inline-flex shrink-0 items-center rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-medium text-brand-700">
+              {versionLabel}
+            </span>
+          )}
         </div>
         <Button
           variant="ghost"
           size="icon"
-          onClick={runScore}
+          onClick={() => void runScore()}
           disabled={busy}
           title="Reavaliar"
         >

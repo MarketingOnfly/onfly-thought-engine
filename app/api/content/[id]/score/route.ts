@@ -6,11 +6,17 @@ import type { LeaderProfile } from "@/lib/db/types";
 export const maxDuration = 60;
 
 /**
- * POST /api/content/[id]/score — roda o motor pra autoavaliar o draft
- * e persiste em content_drafts.style_score.
+ * POST /api/content/[id]/score — autoavalia o conteúdo.
+ *
+ * Aceita opcionalmente `body` no JSON pra avaliar uma variação específica
+ * (A/B/C) sem persistir. Quando body NÃO vem, usa o draft_markdown
+ * primário e PERSISTE em content_drafts.style_score.
+ *
+ * Assim cada variação pode ter sua própria nota em tempo real, mas o
+ * banco continua guardando só a oficial (versão promovida).
  */
 export async function POST(
-  _req: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const user = await getServerUser();
@@ -18,6 +24,19 @@ export async function POST(
 
   const { id } = await params;
   const supabase = await createSupabaseServerClient();
+
+  // body opcional: { body?: string }
+  let overrideBody: string | null = null;
+  if (request.headers.get("content-length") !== "0") {
+    try {
+      const json = await request.json();
+      if (typeof json?.body === "string" && json.body.trim().length > 0) {
+        overrideBody = json.body;
+      }
+    } catch {
+      // sem body — ok, vamos avaliar o draft primário
+    }
+  }
 
   const [{ data: draft }, { data: profile }] = await Promise.all([
     supabase
@@ -34,15 +53,21 @@ export async function POST(
   ]);
 
   if (!draft) return NextResponse.json({ error: "draft not found" }, { status: 404 });
-  if (!draft.draft_markdown)
-    return NextResponse.json({ error: "draft sem texto pra avaliar" }, { status: 400 });
   if (!profile)
     return NextResponse.json({ error: "profile not found" }, { status: 412 });
+
+  const textToScore = overrideBody ?? draft.draft_markdown;
+  if (!textToScore || !textToScore.trim()) {
+    return NextResponse.json(
+      { error: "sem texto pra avaliar" },
+      { status: 400 }
+    );
+  }
 
   let result;
   try {
     result = await scoreStyle({
-      draftText: draft.draft_markdown,
+      draftText: textToScore,
       profile: profile as LeaderProfile,
     });
   } catch (err) {
@@ -57,13 +82,16 @@ export async function POST(
     computed_at: new Date().toISOString(),
   };
 
-  const { error: updErr } = await supabase
-    .from("content_drafts")
-    .update({ style_score: score })
-    .eq("id", id)
-    .eq("user_id", user.id);
+  // Só persiste quando NÃO veio body (= avaliando a versão primária)
+  if (!overrideBody) {
+    const { error: updErr } = await supabase
+      .from("content_drafts")
+      .update({ style_score: score })
+      .eq("id", id)
+      .eq("user_id", user.id);
+    if (updErr)
+      return NextResponse.json({ error: updErr.message }, { status: 500 });
+  }
 
-  if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 });
-
-  return NextResponse.json({ score });
+  return NextResponse.json({ score, ephemeral: !!overrideBody });
 }
