@@ -121,11 +121,28 @@ CONSTRUÇÕES QUE IA AMA E HUMANO EVITA (corte cirurgicamente):
 - Listas com "**Título em negrito:** explicação curta repetindo o título" — inline-header. Diga em prosa corrida.
 - "Embora X, Y" / "Apesar de X, Y" como abertura de parágrafo repetida — IA adora contraste de manual. Use só quando contraste é a estrutura do parágrafo.
 
+FATO VS. FABRICAÇÃO (regra dura — número inventado é veneno):
+- NUNCA invente números que o líder não forneceu. Não no topic, não no brief, não no extra_instructions, não nos anexos, não no learned_preferences.
+- Se você PRECISA de um número pra dar concretude, faça uma destas três coisas — nessa ordem:
+  a) Use número que VEIO de algum input (citado entre [ ] na referência)
+  b) Use uma faixa qualitativa específica ("dobrou em 3 anos", "metade do time")
+  c) Coloque "[número a confirmar]" como placeholder explícito — o líder preenche depois
+- Aproximações fabricadas tipo "algo entre 1.200 e 1.500 empresas" são tells. Líder real fala o número exato ou diz que não tem.
+- Diálogo construído também é fabricação. Só use diálogo se o input mencionou explicitamente.
+- Nome próprio: idem. Se a Letícia não foi nomeada no input, não invente uma Letícia.
+
+PADRÕES PROIBIDOS COMO ABERTURA:
+- "Lembrei disso vendo X" / "Esses dias vi X e me lembrou" (virou clichê novo, substituindo "pensando nisso")
+- "Vou contar uma coisa" / "Tenho uma confissão" / "Há algum tempo..." (introdução de história sem ancoragem)
+- Tudo o que aparecia em ABERTURAS PROIBIDAS continua valendo. Aberturas reais começam pelo FATO ou pela TENSÃO.
+
 AUTO-CHECK FINAL (faça antes de entregar):
 1. Releia. Pergunta-se: "Quais 3 partes desse texto soam mais como IA?". Reescreve essas 3 partes.
 2. Conta os parágrafos: se TODOS têm tamanho parecido, quebre 2-3 deles.
 3. Conta os adjetivos: se algum substantivo importante tem 2+ adjetivos, corte pra 1.
-4. Releia em voz alta na cabeça. Se você não falaria essa frase no Slack, reescreve.`;
+4. Releia em voz alta na cabeça. Se você não falaria essa frase no Slack, reescreve.
+5. Conta triplas paralelas (X. Y. Z. com mesma estrutura). Se houver mais de UMA no texto inteiro, quebre as outras.
+6. Conta números: cada um veio explicitamente do input? Os que não vieram, vira "[a confirmar]" ou cai pra qualitativo.`;
 
 /**
  * IMPORTANTE: tudo aqui dentro é PER-LEADER. O `profile` chega de
@@ -303,13 +320,15 @@ c) Detalhe concreto: um número específico, um nome, uma cena, um arquivo
 d) Reflexão: 1-2 frases sobre o que isso muda na sua tese
 Cada bloco = 1-3 linhas. Quebra de linha entre blocos. Generosa.
 
-PARTE 3 — ENGAGEMENT DRIVER (última linha)
-Não termine com resumo. Termine com UM destes:
+PARTE 3 — ENGAGEMENT DRIVER (última linha — OBRIGATÓRIO exceto brand_awareness)
+Não termine com resumo. Para todos objetivos EXCETO brand_awareness (que aceita slogan ownable):
 - Pergunta concreta: "Quem mais já trocou X por Y? Me conta a sua taxa."
 - Convite específico: "Tem caso parecido? Compartilha em comentário com um número."
 - Aposta provocadora: "Vai dar errado, mas mais lento do que se imagina."
 - Tag direcionada: "Marca aí quem precisa ver isso." (use com moderação)
 NUNCA: "Comente aí o que achou", "Deixa sua opinião nos comentários", "Espero ter ajudado".
+
+Pra brand_awareness: aceita encerramento com frase ownable (slogan da ideia) — não precisa de pergunta. Mas mesmo aí, prefere fechar com aposta concreta a fechar com generalidade.
 
 REGRAS DE FORMATAÇÃO:
 - Máximo 2-3 linhas por parágrafo. Espaço em branco é dinheiro no LinkedIn.
@@ -345,6 +364,18 @@ PRINCÍPIOS:
 - Cada seção desenvolve UM argumento. Cada argumento traz um dado, número ou recorte concreto.
 - Listas só quando o conteúdo for genuinamente enumerável. Nunca como muleta.
 - Conclusão cristaliza a tese e deixa aposta sobre o futuro.
+
+HEADINGS (não negocie):
+- INFORMACIONAL, não meta-poético. Headings descrevem o argumento da seção, não fazem rodeio:
+  ✓ "O ticket médio dobrou em 3 anos"
+  ✗ "A planilha que parou no tempo"
+  ✓ "Como ler travel como dado"
+  ✗ "A confusão de categoria"
+  ✓ "Por que CFO erra o sinal"
+  ✗ "A linha do meio"
+- Máximo 8 palavras por heading.
+- Frase normal: maiúscula só no início. Sem Title Case Inglês.
+- NÃO tente fazer cada heading virar uma "tweet". Headings de coluna de imprensa real são informativas, não punchy.
 
 FORMATAÇÃO:
 - Use markdown: # Título, ## Sub-título.

@@ -47,6 +47,56 @@ function pickMoodBiases(
   return biases.slice(0, count);
 }
 
+/**
+ * Pra cada variação A/B/C, força um HOOK PATTERN distinto baseado no
+ * skill /linkedin-thought-leader. Sem isso, as 3 variações tendem a
+ * usar o mesmo padrão (geralmente "Revelação Pessoal") só com mood
+ * diferente — variação semântica fraca.
+ *
+ * Ordem prioriza diversidade: Stat surpresa → Ousada → Frustração →
+ * Revelação → Pergunta. Se o líder pediu um hookStyle específico,
+ * a 1ª variação usa esse (respeita preferência), as outras divergem.
+ */
+function pickHookPatterns(
+  chosenHook: string | null,
+  count: number
+): (string | null)[] {
+  const PATTERNS = [
+    "estatistica_surpresa", // "X% subiu. E ninguém percebeu."
+    "afirmacao_ousada", // "Travel virou tese de governança."
+    "frustracao_relatavel", // "O que ninguém fala sobre X..."
+    "revelacao_pessoal", // "Eu acreditava que X. Estava errado."
+    "pergunta_provocadora", // "E se X não fosse o objetivo?"
+  ];
+  // Mapeia hookStyle do líder pra um dos PATTERNS, ou usa o 1º
+  const seeded = chosenHook ?? PATTERNS[0];
+  const biases: (string | null)[] = [seeded];
+  if (count <= 1) return biases;
+  for (const p of PATTERNS) {
+    if (biases.length >= count) break;
+    if (biases.includes(p)) continue;
+    biases.push(p);
+  }
+  return biases.slice(0, count);
+}
+
+function hookHintFor(pattern: string | null): string {
+  if (!pattern) return "";
+  const HINTS: Record<string, string> = {
+    estatistica_surpresa:
+      "Abra com um número surpreendente seguido de afirmação curta. Ex: 'O CAC subiu 35% no Q3. E nenhum sócio percebeu.'",
+    afirmacao_ousada:
+      "Abra com uma afirmação ousada que desafie consenso. Ex: 'Documentação interna está morta. Aqui está por quê.'",
+    frustracao_relatavel:
+      "Abra com algo que o líder vive na pele que ninguém fala. Ex: 'O que ninguém fala sobre crescer time de 5 pra 50:'",
+    revelacao_pessoal:
+      "Abra com revelação de erro/mudança de visão. Ex: 'Eu defendia X. Estava errado. Aqui está o que mudou.'",
+    pergunta_provocadora:
+      "Abra com pergunta que vire premissa de cabeça pra baixo. Ex: 'E se a meta de retenção não fosse o objetivo? E se fosse a métrica errada?'",
+  };
+  return HINTS[pattern] ?? "";
+}
+
 function labelForMood(moodKey: string | null): string {
   if (!moodKey) return "humor padrão";
   const m = MOOD_VARIATIONS.find((x) => x.key === moodKey);
@@ -122,6 +172,7 @@ export async function POST(request: NextRequest) {
 
   const draftId = insertRes.data.id;
   const moodBiases = pickMoodBiases(parsed.data.mood ?? null, variations);
+  const hookPatterns = pickHookPatterns(parsed.data.hook_style ?? null, variations);
 
   try {
     // ============================================================
@@ -146,12 +197,27 @@ export async function POST(request: NextRequest) {
     });
 
     const anthropic = getAnthropic();
-    const calls = moodBiases.map(async (moodKey) => {
+    const calls = moodBiases.map(async (moodKey, idx) => {
+      const hookPattern = hookPatterns[idx];
+      const hookHint = hookHintFor(hookPattern);
+      // Injeta o hint do hook pattern direto no extra_instructions
+      // (em vez de criar um novo param no buildContentUserPrompt)
+      // Cada variação A/B/C força um padrão diferente do skill
+      // /linkedin-thought-leader
+      const extraWithHook = [
+        parsed.data.extra_instructions,
+        hookHint
+          ? `PADRÃO DE HOOK PRA ESSA VARIAÇÃO (não negocie — varia entre versões pra dar diversidade real): ${hookHint}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+
       const userPrompt = buildContentUserPrompt({
         format: parsed.data.format,
         topic: parsed.data.topic,
         brief: parsed.data.brief,
-        extraInstructions: parsed.data.extra_instructions,
+        extraInstructions: extraWithHook || null,
         hookStyle: parsed.data.hook_style,
         objective: parsed.data.objective,
         contentType: parsed.data.content_type,

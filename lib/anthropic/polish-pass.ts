@@ -89,6 +89,21 @@ VOCABULÁRIO BANIDO (palavras IA-coded em pt-BR — corte ou substitua):
    Verifique vocabulário: alguma frase usa termo abstrato quando podia usar termo concreto? Troca.
    Verifique se você FALARIA cada frase no Slack: as que não, reescreve em pt-BR de operador.
 
+5. CAÇA À RULE-OF-THREE (regra dura — IA adora tripla, humano não):
+   Procure padrões de três elementos com estrutura paralela:
+   - "Não preço. Não destino. Não desvio." → tripla negativa, mantenha 1, quebre as outras
+   - "Budget anual... Política... Negociação..." → tripla nominal, mantenha 1 ou 2
+   - "Faz X. Faz Y. Faz Z." → tripla verbal, vire em 2 frases
+   - 3 bullets com estrutura idêntica → vire em prosa OU varie o tamanho dos bullets
+   REGRA: máximo UMA tripla paralela no texto inteiro. Conte explicitamente e quebre as extras.
+
+6. CAÇA A NÚMEROS INVENTADOS:
+   Cada número específico que aparece no texto precisa ter origem clara do contexto.
+   Se você NÃO consegue justificar de onde veio um número, troque por:
+   - "[a confirmar]" (placeholder pro líder preencher)
+   - Qualitativo concreto ("dobrou em 3 anos" em vez de "mais que dobrou de R$ 1.380 pra R$ 2.847")
+   "1h32m de aprovação" / "R$ 2.847" / "60% Nordeste" — se não veio do input, vira veneno de credibilidade.
+
 Saída: APENAS o texto editado. Sem preâmbulo, sem markdown de meta-comentário, sem 'aqui está'. Texto pronto pra copiar e colar.`;
 
 export async function polishPass(opts: {
