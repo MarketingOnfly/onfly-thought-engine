@@ -7,11 +7,19 @@ import {
   CalendarDays,
   Check,
   Copy,
+  Eye,
+  FileCode,
   GitBranch,
   Grid3x3,
+  History,
+  Image as ImageIcon,
   LayoutGrid,
   Loader2,
+  Maximize2,
+  MessageSquare,
+  Minimize2,
   RefreshCw,
+  ShieldCheck,
   Sparkles,
   Target,
   Trash2,
@@ -22,6 +30,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Markdown, PlainPost } from "@/components/markdown";
 import { InfographicRenderer } from "@/components/visual-renderer";
 import { ReviewPanel } from "@/components/review-panel";
@@ -39,7 +48,6 @@ import type {
 import { cn, formatDate, slugify } from "@/lib/utils";
 import { apiFetch } from "@/lib/client-fetch";
 import { useConfirm } from "@/components/confirm";
-import { Maximize2, Minimize2, Eye, FileCode } from "lucide-react";
 
 type Archetype =
   | "stats_grid"
@@ -86,6 +94,13 @@ const ARCHETYPES: {
   },
 ];
 
+type SecondaryTab = "versions" | "feedback" | "visuals" | "asks";
+
+interface ReviewMeta {
+  voice_match_score?: number;
+  voice_notes?: string;
+}
+
 export default function ContentEditor({
   initial,
   authorName,
@@ -106,31 +121,47 @@ export default function ContentEditor({
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [visuals, setVisuals] = useState<ContentVisual[]>([]);
-  const [generatingArchetype, setGeneratingArchetype] = useState<Archetype | null>(
-    null
-  );
+  const [generatingArchetype, setGeneratingArchetype] =
+    useState<Archetype | null>(null);
   const [scheduleDraft, setScheduleDraft] = useState(
     initial.scheduled_at ? toLocalInputValue(initial.scheduled_at) : ""
   );
-  // Variação ativa: 0 = primary (draft_markdown), 1+ = alt_versions[i-1]
   const [activeVariation, setActiveVariation] = useState(0);
-  // Modo de exibição: "preview" = mockup LinkedIn, "raw" = texto cru
   const [viewMode, setViewMode] = useState<"preview" | "raw">(
     initial.format === "linkedin_post" ? "preview" : "raw"
   );
-  // Modo foco — esconde tudo menos o texto
   const [focusMode, setFocusMode] = useState(false);
+  const [secondaryTab, setSecondaryTab] = useState<SecondaryTab>("versions");
   const confirm = useConfirm();
 
   const isPost = draft.format === "linkedin_post";
   const alts = (draft.alt_versions as AltVersion[] | undefined) ?? [];
   const styleScore = (draft.style_score as StyleScore | null) ?? null;
+  const meta = (draft.meta ?? {}) as Record<string, unknown>;
+  const reviewMeta = (meta.review ?? null) as ReviewMeta | null;
+  const wasSelfRepaired = !!meta.self_repaired;
+  const revisions =
+    (meta.revisions as { at: string; instructions: string }[] | undefined) ?? [];
+  const infographics = visuals.filter((v) => v.kind === "infographic");
 
-  // O texto exibido depende da variação ativa
   const variationText =
     activeVariation === 0
       ? draft.draft_markdown ?? ""
       : alts[activeVariation - 1]?.body ?? draft.draft_markdown ?? "";
+  const display = variationText;
+
+  useEffect(() => {
+    void loadVisuals();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function loadVisuals() {
+    const res = await fetch(`/api/visuals?draft_id=${draft.id}`);
+    if (res.ok) {
+      const data = await res.json();
+      setVisuals(data.items ?? []);
+    }
+  }
 
   async function promoteVariation(versionId: string) {
     const res = await apiFetch<{ draft: ContentDraft }>(
@@ -144,19 +175,6 @@ export default function ContentEditor({
       setDraft(res.data.draft);
       setLocalText(res.data.draft.draft_markdown ?? "");
       setActiveVariation(0);
-    }
-  }
-
-  useEffect(() => {
-    void loadVisuals();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function loadVisuals() {
-    const res = await fetch(`/api/visuals?draft_id=${draft.id}`);
-    if (res.ok) {
-      const data = await res.json();
-      setVisuals(data.items ?? []);
     }
   }
 
@@ -199,8 +217,18 @@ export default function ContentEditor({
     }
   }
 
-  // isPost vem do bloco de hooks acima. display agora aponta pra variação ativa.
-  const display = variationText;
+  async function clearSchedule() {
+    setScheduleDraft("");
+    const res = await fetch(`/api/content/${draft.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ scheduled_at: null }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setDraft(data.draft);
+    }
+  }
 
   async function revise() {
     setRevising(true);
@@ -237,13 +265,23 @@ export default function ContentEditor({
     }
   }
 
+  async function unapprove() {
+    const res = await fetch(`/api/content/${draft.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ status: "draft" }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setDraft(data.draft);
+    }
+  }
+
   async function saveManualEdit() {
     const res = await fetch(`/api/content/${draft.id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        final_markdown: localText,
-      }),
+      body: JSON.stringify({ final_markdown: localText }),
     });
     if (res.ok) {
       const data = await res.json();
@@ -273,65 +311,106 @@ export default function ContentEditor({
     setTimeout(() => setCopied(false), 1800);
   }
 
-  const revisions =
-    (draft.meta as { revisions?: { at: string; instructions: string }[] })?.revisions ?? [];
+  const isApproved = draft.status === "approved";
 
   return (
     <div className="mt-4">
+      {/* ============================================================
+          TOP STRIP — status + ações principais (Aprovar / Apagar)
+         ============================================================ */}
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant={isPost ? "brand" : "soft"}>
           {isPost ? "Post de LinkedIn" : "Artigo"}
         </Badge>
-        <Badge variant="outline" className="capitalize">{draft.status}</Badge>
-        <span className="ml-auto text-xs text-muted-foreground">
+        <Badge variant="outline" className="capitalize">
+          {draft.status}
+        </Badge>
+        {wasSelfRepaired && (
+          <span
+            className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700"
+            title="O motor rodou a auto-revisão e ajustou trechos fracos antes de te mostrar."
+          >
+            <ShieldCheck className="h-3 w-3" /> Auto-revisado
+          </span>
+        )}
+        <span className="text-xs text-muted-foreground">
           Atualizado {formatDate(draft.updated_at)}
         </span>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {isApproved ? (
+            <Button variant="ghost" size="sm" onClick={unapprove}>
+              Voltar pra rascunho
+            </Button>
+          ) : (
+            <Button variant="primary" size="sm" onClick={approve}>
+              <Check className="h-3.5 w-3.5" /> Aprovar
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={remove}
+            title="Apagar"
+            aria-label="Apagar"
+          >
+            <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+          </Button>
+        </div>
       </div>
 
       <h1 className="mt-4 font-display text-3xl tracking-tight md:text-4xl">
         {draft.topic}
       </h1>
       {draft.brief && (
-        <p className="mt-3 max-w-3xl text-sm text-muted-foreground">{draft.brief}</p>
+        <p className="mt-3 max-w-3xl text-sm text-muted-foreground">
+          {draft.brief}
+        </p>
       )}
 
       <div
         className={cn(
           "mt-8 grid gap-6",
-          focusMode ? "grid-cols-1" : "lg:grid-cols-[1fr_320px]"
+          focusMode ? "grid-cols-1" : "lg:grid-cols-[1fr_340px]"
         )}
       >
-        <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-          {/* Tabs de variações (só aparece se houver alts) */}
+        {/* ============================================================
+            MAIN — content card
+           ============================================================ */}
+        <div className="rounded-2xl border border-border bg-card shadow-sm">
           {alts.length > 0 && !editing && (
-            <div className="-mx-6 -mt-6 mb-4">
-              <VariationsTabs
-                primary={draft.draft_markdown ?? ""}
-                alternates={alts}
-                activeIndex={activeVariation}
-                onPick={setActiveVariation}
-                onPromote={promoteVariation}
-              />
-            </div>
+            <VariationsTabs
+              primary={draft.draft_markdown ?? ""}
+              alternates={alts}
+              activeIndex={activeVariation}
+              onPick={setActiveVariation}
+              onPromote={promoteVariation}
+            />
           )}
 
-          <div className="flex items-center justify-between border-b border-border pb-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-6 py-3">
             <h2 className="text-sm font-medium text-muted-foreground">
               {editing ? "Editando manualmente" : "Rascunho"}
             </h2>
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1">
               {editing ? (
                 <>
-                  <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditing(false)}
+                  >
                     Cancelar
                   </Button>
-                  <Button variant="primary" size="sm" onClick={saveManualEdit}>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={saveManualEdit}
+                  >
                     Salvar edição
                   </Button>
                 </>
               ) : (
                 <>
-                  {/* Toggle preview <> raw — só pra posts */}
                   {isPost && (
                     <Button
                       variant="ghost"
@@ -343,7 +422,7 @@ export default function ContentEditor({
                     >
                       {viewMode === "preview" ? (
                         <>
-                          <FileCode className="h-3.5 w-3.5" /> Texto
+                          <FileCode className="h-3.5 w-3.5" /> Texto cru
                         </>
                       ) : (
                         <>
@@ -352,18 +431,29 @@ export default function ContentEditor({
                       )}
                     </Button>
                   )}
-                  <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditing(true)}
+                  >
                     Editar texto
                   </Button>
                   <Button variant="ghost" size="sm" onClick={copy}>
-                    {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                    {copied ? (
+                      <Check className="h-3.5 w-3.5" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5" />
+                    )}
                     {copied ? "Copiado" : "Copiar"}
                   </Button>
                   <Button
                     variant="ghost"
-                    size="sm"
+                    size="icon"
                     onClick={() => setFocusMode((v) => !v)}
                     title={focusMode ? "Sair do modo foco" : "Modo foco"}
+                    aria-label={
+                      focusMode ? "Sair do modo foco" : "Modo foco"
+                    }
                   >
                     {focusMode ? (
                       <Minimize2 className="h-3.5 w-3.5" />
@@ -376,250 +466,344 @@ export default function ContentEditor({
             </div>
           </div>
 
-          {display ? (
-            editing ? (
-              <Textarea
-                value={localText}
-                onChange={(e) => setLocalText(e.target.value)}
-                rows={isPost ? 18 : 28}
-                className="mt-4 font-mono text-sm"
-              />
-            ) : (
-              <div className="mt-6">
-                {isPost && viewMode === "preview" ? (
-                  <LinkedInPreview
-                    text={display}
-                    authorName={authorName}
-                    authorRole={authorRole}
-                    authorAvatar={authorAvatar}
-                  />
-                ) : isPost ? (
-                  <PlainPost source={display} />
-                ) : (
-                  <Markdown source={display} />
-                )}
-              </div>
-            )
-          ) : (
-            <div className="mt-6 flex items-center gap-3 rounded-xl bg-secondary/40 p-6 text-sm">
-              <Sparkles className="h-4 w-4 animate-pulse text-brand-600" />
-              Aguardando primeira geração.
-            </div>
-          )}
-        </div>
-
-        <aside className={cn("space-y-4", focusMode && "hidden")}>
-          {editing && (
-            <ReviewPanel
-              text={localText}
-              format={isPost ? "linkedin_post" : "article"}
-              enabled
-            />
-          )}
-
-          {/* Score de aderência ao estilo — auto-roda ao abrir */}
-          {display && !editing && (
-            <StyleScoreCard draftId={draft.id} initial={styleScore} />
-          )}
-
-          {/* Feedback: aparece quando já tem rascunho gerado, pra o líder
-              avaliar e o motor aprender. */}
-          {display && !editing && <FeedbackPanel draftId={draft.id} />}
-
-          {/* Histórico de versões — colapsado por default */}
-          {display && !editing && (
-            <VersionsHistory
-              draftId={draft.id}
-              onRestored={(body) => {
-                setDraft((d) => ({ ...d, draft_markdown: body }));
-                setLocalText(body);
-                setActiveVariation(0);
-              }}
-            />
-          )}
-
-          <div className="rounded-2xl border border-border bg-card p-5">
-            <h3 className="text-sm font-medium">Pedir ajustes em português</h3>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Diga o que quer mudar. Mantém sua voz.
-            </p>
-            <Textarea
-              value={revisionPrompt}
-              onChange={(e) => setRevisionPrompt(e.target.value)}
-              placeholder={`Ex: ${
-                isPost
-                  ? "Hook mais ácido. Tira a citação do final. Quero um número no segundo parágrafo."
-                  : "A seção 3 precisa de mais bastidor. Conclusão muito polida — quero uma aposta forte."
-              }`}
-              rows={4}
-              className="mt-3"
-            />
-            {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
-            <Button
-              variant="primary"
-              size="sm"
-              className="mt-3 w-full"
-              onClick={revise}
-              disabled={revising || revisionPrompt.trim().length < 5}
-            >
-              {revising ? (
-                <>
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Revisando...
-                </>
+          <div className="p-6">
+            {display ? (
+              editing ? (
+                <Textarea
+                  value={localText}
+                  onChange={(e) => setLocalText(e.target.value)}
+                  rows={isPost ? 18 : 28}
+                  className="font-mono text-sm"
+                />
+              ) : isPost && viewMode === "preview" ? (
+                <LinkedInPreview
+                  text={display}
+                  authorName={authorName}
+                  authorRole={authorRole}
+                  authorAvatar={authorAvatar}
+                />
+              ) : isPost ? (
+                <PlainPost source={display} />
               ) : (
-                <>
-                  <Wand2 className="h-3.5 w-3.5" /> Aplicar
-                </>
-              )}
-            </Button>
-          </div>
-
-          <div className="rounded-2xl border border-border bg-card p-5">
-            <h3 className="flex items-center gap-2 text-sm font-medium">
-              <CalendarDays className="h-3.5 w-3.5 text-brand-600" />
-              Agendar publicação
-            </h3>
-            <Input
-              type="datetime-local"
-              value={scheduleDraft}
-              onChange={(e) => setScheduleDraft(e.target.value)}
-              className="mt-2"
-            />
-            <div className="mt-2 flex gap-2">
-              <Button variant="primary" size="sm" className="flex-1" onClick={saveSchedule}>
-                Salvar data
-              </Button>
-              {draft.scheduled_at && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setScheduleDraft("");
-                    void (async () => {
-                      const res = await fetch(`/api/content/${draft.id}`, {
-                        method: "PATCH",
-                        headers: { "content-type": "application/json" },
-                        body: JSON.stringify({ scheduled_at: null }),
-                      });
-                      if (res.ok) {
-                        const data = await res.json();
-                        setDraft(data.draft);
-                      }
-                    })();
-                  }}
-                >
-                  Tirar
-                </Button>
-              )}
-            </div>
-            {draft.scheduled_at && (
-              <p className="mt-2 text-xs text-muted-foreground">
-                Agendado pra{" "}
-                <span className="font-mono">
-                  {new Date(draft.scheduled_at).toLocaleString("pt-BR", {
-                    day: "2-digit",
-                    month: "short",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </span>
-              </p>
+                <Markdown source={display} />
+              )
+            ) : (
+              <div className="flex items-center gap-3 rounded-xl bg-secondary/40 p-6 text-sm">
+                <Sparkles className="h-4 w-4 animate-pulse text-brand-600" />
+                Aguardando primeira geração.
+              </div>
             )}
           </div>
+        </div>
 
-          <div className="rounded-2xl border border-border bg-card p-5">
-            <h3 className="flex items-center gap-2 text-sm font-medium">
-              <LayoutGrid className="h-3.5 w-3.5 text-brand-600" />
-              Gerar infográfico
-            </h3>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Escolha um modelo. O motor desenha no padrão Onfly.
-            </p>
-            <div className="mt-3 space-y-1">
-              {ARCHETYPES.map((a) => {
-                const isGen = generatingArchetype === a.key;
-                return (
-                  <button
-                    key={a.key}
-                    type="button"
-                    onClick={() => generateInfographic(a.key)}
-                    disabled={generatingArchetype !== null}
-                    className="flex w-full items-start gap-2 rounded-lg p-2 text-left transition hover:bg-secondary disabled:opacity-50"
+        {/* ============================================================
+            ASIDE — 3 cards primários + tabs secundárias
+           ============================================================ */}
+        <aside className={cn("space-y-4", focusMode && "hidden")}>
+          {/* MODO EDIÇÃO: revisão em tempo real toma o lugar dos cards */}
+          {editing ? (
+            <>
+              <ReviewPanel
+                text={localText}
+                format={isPost ? "linkedin_post" : "article"}
+                enabled
+              />
+              <div className="rounded-2xl border border-border bg-card p-4 text-xs text-muted-foreground">
+                Saindo da edição manual sem salvar descarta as mudanças
+                locais. Os outros painéis voltam quando você fechar a
+                edição.
+              </div>
+            </>
+          ) : (
+            <>
+              {/* CARD 1 — Pedir ajuste (primary action) */}
+              {display && (
+                <div className="rounded-2xl border border-brand-200 bg-card p-5 shadow-sm">
+                  <h3 className="flex items-center gap-2 text-sm font-medium">
+                    <Wand2 className="h-3.5 w-3.5 text-brand-600" />
+                    Pedir ajuste em pt-BR
+                  </h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Diga o que mudar. Mantém sua voz.
+                  </p>
+                  <Textarea
+                    value={revisionPrompt}
+                    onChange={(e) => setRevisionPrompt(e.target.value)}
+                    placeholder={
+                      isPost
+                        ? "Ex: hook mais ácido. tira a citação do fim. quero um número no 2º parágrafo."
+                        : "Ex: seção 3 precisa de mais bastidor. conclusão muito polida — quero uma aposta forte."
+                    }
+                    rows={4}
+                    className="mt-3"
+                  />
+                  {error && (
+                    <p className="mt-2 text-xs text-destructive">{error}</p>
+                  )}
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="mt-3 w-full"
+                    onClick={revise}
+                    disabled={revising || revisionPrompt.trim().length < 5}
                   >
-                    {isGen ? (
-                      <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-brand-600" />
+                    {revising ? (
+                      <>
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />{" "}
+                        Revisando…
+                      </>
                     ) : (
-                      <a.icon className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" />
+                      <>
+                        <Wand2 className="h-3.5 w-3.5" /> Aplicar
+                      </>
                     )}
-                    <div className="min-w-0">
-                      <p className="text-xs font-medium leading-tight">
-                        {a.label}
-                      </p>
-                      <p className="text-[10px] leading-tight text-muted-foreground">
-                        {a.description}
-                      </p>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-border bg-card p-5">
-            <h3 className="text-sm font-medium">Ações</h3>
-            <div className="mt-3 flex flex-col gap-2">
-              {draft.status !== "approved" && (
-                <Button variant="outline" size="sm" onClick={approve}>
-                  <Check className="h-3.5 w-3.5" /> Marcar como aprovado
-                </Button>
+                  </Button>
+                </div>
               )}
-              <Button variant="ghost" size="sm" onClick={remove}>
-                <Trash2 className="h-3.5 w-3.5" /> Excluir
-              </Button>
-            </div>
-          </div>
 
-          {revisions.length > 0 && (
-            <div className="rounded-2xl border border-border bg-card p-5">
-              <h3 className="text-sm font-medium">O que você já pediu pra mudar</h3>
-              <ul className="mt-3 space-y-3 text-xs">
-                {revisions
-                  .slice()
-                  .reverse()
-                  .map((r, i) => (
-                    <li key={i} className="rounded-lg bg-secondary/50 p-3">
-                      <p className="font-mono text-[10px] text-muted-foreground">
-                        {formatDate(r.at)}
+              {/* CARD 2 — Saúde do texto */}
+              {display && (
+                <div className="space-y-2">
+                  {reviewMeta?.voice_match_score != null && (
+                    <div className="rounded-xl border border-border bg-card px-3 py-2 text-xs">
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                        <span className="text-muted-foreground">
+                          Auto-revisão na geração:
+                        </span>
+                        <span
+                          className={cn(
+                            "ml-auto font-mono font-semibold",
+                            reviewMeta.voice_match_score >= 85
+                              ? "text-emerald-600"
+                              : reviewMeta.voice_match_score >= 70
+                                ? "text-brand-700"
+                                : "text-amber-600"
+                          )}
+                        >
+                          {reviewMeta.voice_match_score}/100
+                        </span>
+                      </div>
+                      {reviewMeta.voice_notes && (
+                        <p className="mt-1 text-[11px] leading-snug text-muted-foreground">
+                          {reviewMeta.voice_notes}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  <StyleScoreCard draftId={draft.id} initial={styleScore} />
+                </div>
+              )}
+
+              {/* CARD 3 — Agendar */}
+              <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+                <h3 className="flex items-center gap-2 text-sm font-medium">
+                  <CalendarDays className="h-3.5 w-3.5 text-brand-600" />
+                  Agendar publicação
+                </h3>
+                <Input
+                  type="datetime-local"
+                  value={scheduleDraft}
+                  onChange={(e) => setScheduleDraft(e.target.value)}
+                  className="mt-2"
+                />
+                <div className="mt-2 flex gap-2">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    className="flex-1"
+                    onClick={saveSchedule}
+                    disabled={!scheduleDraft}
+                  >
+                    Salvar data
+                  </Button>
+                  {draft.scheduled_at && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={clearSchedule}
+                    >
+                      Tirar
+                    </Button>
+                  )}
+                </div>
+                {draft.scheduled_at && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Agendado pra{" "}
+                    <span className="font-mono">
+                      {new Date(draft.scheduled_at).toLocaleString("pt-BR", {
+                        day: "2-digit",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  </p>
+                )}
+              </div>
+
+              {/* SECUNDÁRIOS — tabs */}
+              {display && (
+                <div className="rounded-2xl border border-border bg-card p-2 shadow-sm">
+                  <Tabs
+                    value={secondaryTab}
+                    onValueChange={(v) =>
+                      setSecondaryTab(v as SecondaryTab)
+                    }
+                  >
+                    <TabsList className="grid h-auto w-full grid-cols-4 gap-0.5 rounded-lg bg-muted p-1 text-[11px]">
+                      <TabsTrigger
+                        value="versions"
+                        className="rounded-md px-1 py-1.5 text-[11px]"
+                        title="Versões"
+                      >
+                        <History className="h-3 w-3" />
+                      </TabsTrigger>
+                      <TabsTrigger
+                        value="feedback"
+                        className="rounded-md px-1 py-1.5 text-[11px]"
+                        title="Feedback"
+                      >
+                        <MessageSquare className="h-3 w-3" />
+                      </TabsTrigger>
+                      <TabsTrigger
+                        value="visuals"
+                        className="rounded-md px-1 py-1.5 text-[11px]"
+                        title="Infográfico"
+                      >
+                        <ImageIcon className="h-3 w-3" />
+                      </TabsTrigger>
+                      <TabsTrigger
+                        value="asks"
+                        className="rounded-md px-1 py-1.5 text-[11px]"
+                        title="O que você pediu"
+                      >
+                        <LayoutGrid className="h-3 w-3" />
+                      </TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="versions" className="mt-2 p-2">
+                      <VersionsHistory
+                        draftId={draft.id}
+                        onRestored={(body) => {
+                          setDraft((d) => ({ ...d, draft_markdown: body }));
+                          setLocalText(body);
+                          setActiveVariation(0);
+                        }}
+                      />
+                    </TabsContent>
+
+                    <TabsContent value="feedback" className="mt-2 p-2">
+                      <FeedbackPanel draftId={draft.id} />
+                    </TabsContent>
+
+                    <TabsContent value="visuals" className="mt-2 px-2 pb-2">
+                      <h4 className="flex items-center gap-2 text-sm font-medium">
+                        <ImageIcon className="h-3.5 w-3.5 text-brand-600" />
+                        Gerar infográfico
+                      </h4>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Escolha um modelo. O motor desenha no padrão Onfly.
                       </p>
-                      <p className="mt-1">{r.instructions}</p>
-                    </li>
-                  ))}
-              </ul>
-            </div>
+                      <div className="mt-3 space-y-1">
+                        {ARCHETYPES.map((a) => {
+                          const isGen = generatingArchetype === a.key;
+                          return (
+                            <button
+                              key={a.key}
+                              type="button"
+                              onClick={() => generateInfographic(a.key)}
+                              disabled={generatingArchetype !== null}
+                              className="flex w-full items-start gap-2 rounded-lg p-2 text-left transition hover:bg-secondary disabled:opacity-50"
+                            >
+                              {isGen ? (
+                                <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-brand-600" />
+                              ) : (
+                                <a.icon className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" />
+                              )}
+                              <div className="min-w-0">
+                                <p className="text-xs font-medium leading-tight">
+                                  {a.label}
+                                </p>
+                                <p className="text-[10px] leading-tight text-muted-foreground">
+                                  {a.description}
+                                </p>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {infographics.length > 0 && (
+                        <p className="mt-3 text-[10px] text-muted-foreground">
+                          {infographics.length} infográfico
+                          {infographics.length > 1 ? "s" : ""} gerado
+                          {infographics.length > 1 ? "s" : ""} — veja no fim
+                          da página.
+                        </p>
+                      )}
+                    </TabsContent>
+
+                    <TabsContent value="asks" className="mt-2 px-2 pb-2">
+                      <h4 className="text-sm font-medium">
+                        O que você já pediu pra mudar
+                      </h4>
+                      {revisions.length > 0 ? (
+                        <ul className="mt-3 space-y-2 text-xs">
+                          {revisions
+                            .slice()
+                            .reverse()
+                            .map((r, i) => (
+                              <li
+                                key={i}
+                                className="rounded-lg bg-secondary/50 p-2"
+                              >
+                                <p className="font-mono text-[10px] text-muted-foreground">
+                                  {formatDate(r.at)}
+                                </p>
+                                <p className="mt-1 leading-snug">
+                                  {r.instructions}
+                                </p>
+                              </li>
+                            ))}
+                        </ul>
+                      ) : (
+                        <p className="mt-3 text-xs text-muted-foreground">
+                          Nada pedido ainda. Use o card{" "}
+                          <em>Pedir ajuste</em> acima pra refinar.
+                        </p>
+                      )}
+                    </TabsContent>
+                  </Tabs>
+                </div>
+              )}
+            </>
           )}
         </aside>
       </div>
 
-      {visuals.filter((v) => v.kind === "infographic").length > 0 && (
+      {/* Infográficos renderizados embaixo da página */}
+      {infographics.length > 0 && (
         <section className="mt-10">
           <h2 className="font-display text-2xl tracking-tight">Infográficos</h2>
           <div className="mt-4 space-y-6">
-            {visuals
-              .filter((v) => v.kind === "infographic")
-              .map((v) => (
-                <div key={v.id}>
-                  <div className="mb-2 flex items-center justify-between">
-                    <Badge variant="soft">Infográfico</Badge>
-                    <Button variant="ghost" size="sm" onClick={() => deleteVisual(v.id)}>
-                      <Trash2 className="h-3 w-3" /> Remover
-                    </Button>
-                  </div>
-                  <InfographicRenderer
-                    html={v.payload}
-                    filename={slugify(draft.topic)}
-                  />
+            {infographics.map((v) => (
+              <div key={v.id}>
+                <div className="mb-2 flex items-center justify-between">
+                  <Badge variant="soft">Infográfico</Badge>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => deleteVisual(v.id)}
+                  >
+                    <Trash2 className="h-3 w-3" /> Remover
+                  </Button>
                 </div>
-              ))}
+                <InfographicRenderer
+                  html={v.payload}
+                  filename={slugify(draft.topic)}
+                />
+              </div>
+            ))}
           </div>
         </section>
       )}
@@ -628,7 +812,6 @@ export default function ContentEditor({
 }
 
 function toLocalInputValue(iso: string): string {
-  // datetime-local expects "YYYY-MM-DDTHH:mm"
   const d = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(

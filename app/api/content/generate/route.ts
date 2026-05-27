@@ -11,6 +11,8 @@ import { CONTENT_LENGTHS, MOOD_VARIATIONS } from "@/lib/style-presets";
 import { planContent, planAsPromptContext } from "@/lib/anthropic/plan-content";
 import { polishPass } from "@/lib/anthropic/polish-pass";
 import { getFewShotExamples } from "@/lib/anthropic/few-shot";
+import { reviewText } from "@/lib/anthropic/review";
+import { selfRepair } from "@/lib/anthropic/self-repair";
 import type { AltVersion, LeaderProfile } from "@/lib/db/types";
 
 export const maxDuration = 180;
@@ -20,6 +22,10 @@ export const maxDuration = 180;
  *  1. PLAN (Opus) — Sênior editor pensa estrutura, tensão, fato, mood.
  *  2. DRAFT (Sonnet) — Executor escreve seguindo o plano + few-shot.
  *  3. POLISH (Sonnet) — Anti-clichê + cut 20% + sensorial check.
+ *  4. SELF-CRITIQUE (Sonnet) — Roda o MESMO revisor da revisão em tempo
+ *     real. Se voice_match < 75 ou issue crítica, faz repair cirúrgico.
+ *     Assim o texto que chega no editor já passou pelo mesmo crivo que o
+ *     líder usaria manualmente.
  *
  * Pra variações > 1: cada versão usa um MOOD distinto pra dar variação
  * semântica de verdade (não só hook). Pipelines rodam em paralelo.
@@ -101,7 +107,7 @@ export async function POST(request: NextRequest) {
         content_type: parsed.data.content_type ?? null,
         mood: parsed.data.mood ?? null,
         variations,
-        pipeline: "plan_draft_polish_v1",
+        pipeline: "plan_draft_polish_critique_v2",
       },
     })
     .select()
@@ -209,14 +215,66 @@ export async function POST(request: NextRequest) {
       )
     );
 
-    const final = drafted.map((d, i) => {
+    const polishedFinal = drafted.map((d, i) => {
       const p = polished[i];
       const text = p.status === "fulfilled" && p.value ? p.value : d.raw;
       return { moodKey: d.moodKey, text };
     });
 
     // ============================================================
-    // Salva primary + alt_versions + plan no meta
+    // FASE 4 — SELF-CRITIQUE (review + conditional repair)
+    //          Roda o MESMO revisor da revisão em tempo real e, se o
+    //          score for ruim, corrige antes de devolver pro líder.
+    // ============================================================
+    const critiqued = await Promise.allSettled(
+      polishedFinal.map(async (v) => {
+        try {
+          const review = await reviewText({
+            userId: user.id,
+            text: v.text,
+            format: parsed.data.format,
+          });
+          if (!review) return { ...v, review: null, repaired: false };
+
+          const errorIssues = review.issues.filter(
+            (i) => i.severity === "error"
+          );
+          const needsRepair =
+            review.voice_match_score < 75 || errorIssues.length > 0;
+
+          if (!needsRepair) return { ...v, review, repaired: false };
+
+          const repaired = await selfRepair({
+            draft: v.text,
+            format: parsed.data.format,
+            issues: review.issues.slice(0, 6),
+            voiceNotes: review.voice_notes,
+            voiceMatchScore: review.voice_match_score,
+          });
+          return {
+            ...v,
+            text: repaired || v.text,
+            review,
+            repaired: !!repaired && repaired !== v.text,
+          };
+        } catch {
+          return { ...v, review: null, repaired: false };
+        }
+      })
+    );
+
+    const final = critiqued.map((r, i) =>
+      r.status === "fulfilled"
+        ? r.value
+        : {
+            ...polishedFinal[i],
+            review: null as Awaited<ReturnType<typeof reviewText>>,
+            repaired: false,
+          }
+    );
+
+    // ============================================================
+    // Salva primary + alt_versions + plan + review no meta
     // ============================================================
     const primary = final[0];
     const alts: AltVersion[] = final.slice(1).map((s, i) => ({
@@ -231,7 +289,9 @@ export async function POST(request: NextRequest) {
       content_draft_id: draftId,
       user_id: user.id,
       body: primary.text,
-      reason: `Geração inicial — Versão A (${labelForMood(primary.moodKey)})`,
+      reason: `Geração inicial — Versão A (${labelForMood(primary.moodKey)})${
+        primary.repaired ? " · auto-revisado" : ""
+      }`,
     });
 
     const { data: updated, error: updErr } = await supabase
@@ -242,6 +302,8 @@ export async function POST(request: NextRequest) {
         meta: {
           ...((insertRes.data.meta as Record<string, unknown>) ?? {}),
           plan,
+          review: primary.review ?? null,
+          self_repaired: primary.repaired,
         },
       })
       .eq("id", draftId)
