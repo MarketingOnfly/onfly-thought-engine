@@ -38,10 +38,17 @@ export function useStyleScore(opts: UseStyleScoreOpts) {
     if (!target) return;
     if (target === lastScoredText.current) return;
 
+    // Limpa o score atual pra que a UI mostre "recalculando" em vez
+    // de manter dados da variação anterior. Sem isso a percepção é de
+    // que a nota "não atualiza" — mesmo quando ela tá pra atualizar
+    // em < 1s.
+    setScore(null);
+    setError(null);
+
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       void runScore(target);
-    }, 600);
+    }, 200);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
@@ -56,6 +63,7 @@ export function useStyleScore(opts: UseStyleScoreOpts) {
       const isOverride = !!body && body !== primaryBody;
       const res = await fetch(`/api/content/${draftId}/score`, {
         method: "POST",
+        cache: "no-store",
         headers: { "content-type": "application/json" },
         body: isOverride ? JSON.stringify({ body: text }) : "",
       });
@@ -206,7 +214,36 @@ export function StyleScoreDetails({
   score: StyleScore | null;
   busy: boolean;
 }) {
-  if (!score && !busy) return null;
+  // Estado "recalculando" — sem score mas trabalhando. Mostra placeholder
+  // pra deixar claro que tá atualizando (após troca de variação).
+  if (!score && busy) {
+    return (
+      <div className="animate-pulse">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-brand-600" />
+          <h3 className="text-sm font-medium">
+            Recalculando aderência…
+          </h3>
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Avaliando o texto desta versão contra seu estilo.
+        </p>
+        <div className="mt-4 grid gap-5 md:grid-cols-2">
+          <div className="space-y-2">
+            <div className="h-2 w-24 rounded bg-secondary" />
+            <div className="h-2 w-full rounded bg-secondary" />
+            <div className="h-2 w-5/6 rounded bg-secondary" />
+            <div className="h-2 w-4/6 rounded bg-secondary" />
+          </div>
+          <div className="space-y-2">
+            <div className="h-2 w-24 rounded bg-secondary" />
+            <div className="h-2 w-full rounded bg-secondary" />
+            <div className="h-2 w-3/4 rounded bg-secondary" />
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (!score) return null;
   const { matches, gaps } = score;
   if (matches.length === 0 && gaps.length === 0) return null;

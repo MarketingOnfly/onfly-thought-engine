@@ -577,11 +577,13 @@ export default function ContentEditor({
 
           {/* Sugestões de aderência — aparecem abaixo do conteúdo,
               full-width no main column, aproveitando o espaço vertical
-              que sobrava quando o draft é curto */}
+              que sobrava quando o draft é curto. Mantém o slot quando
+              tá recalculando (busy && !score) pra evitar layout shift. */}
           {display &&
             !editing &&
             (styleScoreState.score?.matches.length ||
-              styleScoreState.score?.gaps.length) && (
+              styleScoreState.score?.gaps.length ||
+              styleScoreState.busy) && (
               <div className="border-t border-border p-6">
                 <StyleScoreDetails
                   score={styleScoreState.score}
