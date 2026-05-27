@@ -159,6 +159,11 @@ export interface ContentDraft {
   tags: string[];
   alt_versions: AltVersion[];
   style_score: StyleScore | null;
+  // publicação real no LinkedIn (migration 016)
+  published_at: string | null;
+  linkedin_post_urn: string | null;
+  linkedin_post_url: string | null;
+  publish_error: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -7,6 +7,7 @@ import {
   CalendarDays,
   Check,
   Copy,
+  ExternalLink,
   Eye,
   FileCode,
   FileText,
@@ -15,11 +16,13 @@ import {
   History,
   Image as ImageIcon,
   LayoutGrid,
+  Linkedin,
   Loader2,
   Maximize2,
   MessageSquare,
   Minimize2,
   RefreshCw,
+  Send,
   ShieldCheck,
   Sparkles,
   Target,
@@ -110,11 +113,13 @@ export default function ContentEditor({
   authorName,
   authorRole,
   authorAvatar,
+  linkedinReady,
 }: {
   initial: ContentDraft;
   authorName: string;
   authorRole: string | null;
   authorAvatar: string | null;
+  linkedinReady: boolean;
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState<ContentDraft>(initial);
@@ -136,6 +141,8 @@ export default function ContentEditor({
   );
   const [focusMode, setFocusMode] = useState(false);
   const [pageTab, setPageTab] = useState<PageTab>("content");
+  const [publishing, setPublishing] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
   const confirm = useConfirm();
 
   const isPost = draft.format === "linkedin_post";
@@ -282,6 +289,44 @@ export default function ContentEditor({
     }
   }
 
+  async function publish() {
+    const text = (draft.draft_markdown ?? "").trim();
+    if (!text) return;
+    const ok = await confirm({
+      title: "Publicar no LinkedIn agora?",
+      description: `O texto vai pro seu perfil agora, visível pra todos. ${text.length} caracteres. Tem certeza?`,
+      confirmText: "Publicar",
+    });
+    if (!ok) return;
+    setPublishing(true);
+    setPublishError(null);
+    try {
+      const res = await fetch(`/api/content/${draft.id}/publish`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setPublishError(data.error ?? "Falha ao publicar");
+        return;
+      }
+      if (data.draft) {
+        setDraft(data.draft);
+      } else if (data.url) {
+        // edge case: publicou mas não atualizou local
+        setDraft((d) => ({
+          ...d,
+          published_at: new Date().toISOString(),
+          linkedin_post_url: data.url,
+          linkedin_post_urn: data.urn ?? null,
+        }));
+      }
+    } catch (err) {
+      setPublishError(err instanceof Error ? err.message : "Erro");
+    } finally {
+      setPublishing(false);
+    }
+  }
+
   async function unapprove() {
     const res = await fetch(`/api/content/${draft.id}`, {
       method: "PATCH",
@@ -350,16 +395,52 @@ export default function ContentEditor({
             <ShieldCheck className="h-3 w-3" /> Auto-revisado
           </span>
         )}
+        {draft.published_at && draft.linkedin_post_url && (
+          <a
+            href={draft.linkedin_post_url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-medium text-brand-700 hover:bg-brand-100"
+            title={`Publicado em ${formatDate(draft.published_at)}`}
+          >
+            <Linkedin className="h-3 w-3" /> Publicado
+            <ExternalLink className="h-3 w-3 opacity-70" />
+          </a>
+        )}
         <span className="text-xs text-muted-foreground">
           Atualizado {formatDate(draft.updated_at)}
         </span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          {/* Publicar no LinkedIn — só pra posts, e quando ainda não publicou */}
+          {isPost && !draft.published_at && (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={publish}
+              disabled={publishing || !linkedinReady}
+              title={
+                linkedinReady
+                  ? "Publica direto no seu perfil LinkedIn"
+                  : "Conecte o LinkedIn em Analytics primeiro"
+              }
+            >
+              {publishing ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Publicando…
+                </>
+              ) : (
+                <>
+                  <Send className="h-3.5 w-3.5" /> Publicar
+                </>
+              )}
+            </Button>
+          )}
           {isApproved ? (
             <Button variant="ghost" size="sm" onClick={unapprove}>
               Voltar pra rascunho
             </Button>
           ) : (
-            <Button variant="primary" size="sm" onClick={approve}>
+            <Button variant="outline" size="sm" onClick={approve}>
               <Check className="h-3.5 w-3.5" /> Aprovar
             </Button>
           )}
@@ -374,6 +455,23 @@ export default function ContentEditor({
           </Button>
         </div>
       </div>
+
+      {publishError && (
+        <div className="mt-3 flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+          <Linkedin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <p className="font-medium">Falha ao publicar no LinkedIn</p>
+            <p className="mt-0.5">{publishError}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setPublishError(null)}
+            className="text-destructive/70 hover:text-destructive"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       <h1 className="mt-4 font-display text-3xl tracking-tight md:text-4xl">
         {draft.topic}

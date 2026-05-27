@@ -14,7 +14,15 @@ const TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken";
 const USERINFO_URL = "https://api.linkedin.com/v2/userinfo";
 
 // Scopes default disponíveis pra todo mundo:
-const DEFAULT_SCOPES = ["openid", "profile", "email"].join(" ");
+// - openid/profile/email: vem com "Sign In with LinkedIn using OpenID Connect"
+// - w_member_social: vem com o product "Share on LinkedIn" (aprovação instantânea)
+//   Permite publicar posts em nome do usuário autorizado.
+const DEFAULT_SCOPES = [
+  "openid",
+  "profile",
+  "email",
+  "w_member_social",
+].join(" ");
 
 interface OAuthCreds {
   clientId: string;
@@ -117,6 +125,95 @@ export async function fetchProfile(accessToken: string): Promise<LinkedInProfile
     throw new Error(`LinkedIn userinfo failed: ${res.status} ${text}`);
   }
   return (await res.json()) as LinkedInProfile;
+}
+
+/**
+ * Publica um post de texto no perfil pessoal do usuário (UGC API).
+ *
+ * Requer scope `w_member_social` no token (product "Share on LinkedIn").
+ *
+ * Devolve { urn, url }. URL é construída a partir do URN (LinkedIn não
+ * retorna explicitamente, mas é determinística).
+ */
+export async function publishPost(opts: {
+  accessToken: string;
+  linkedinUserId: string; // sub do userinfo, ex: "abc123"
+  text: string;
+  visibility?: "PUBLIC" | "CONNECTIONS";
+}): Promise<{ urn: string; url: string }> {
+  const visibility = opts.visibility ?? "PUBLIC";
+  const authorUrn = `urn:li:person:${opts.linkedinUserId}`;
+
+  const body = {
+    author: authorUrn,
+    lifecycleState: "PUBLISHED",
+    specificContent: {
+      "com.linkedin.ugc.ShareContent": {
+        shareCommentary: { text: opts.text },
+        shareMediaCategory: "NONE",
+      },
+    },
+    visibility: {
+      "com.linkedin.ugc.MemberNetworkVisibility": visibility,
+    },
+  };
+
+  const res = await fetch("https://api.linkedin.com/v2/ugcPosts", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${opts.accessToken}`,
+      "content-type": "application/json",
+      "x-restli-protocol-version": "2.0.0",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    let message = `LinkedIn API ${res.status}`;
+    try {
+      const parsed = JSON.parse(errText);
+      message = parsed.message ?? parsed.error ?? errText.slice(0, 200);
+    } catch {
+      if (errText) message = errText.slice(0, 200);
+    }
+    // Códigos comuns:
+    if (res.status === 401) {
+      throw new Error(
+        "Token do LinkedIn expirou ou foi revogado. Reconecta sua conta na aba Analytics."
+      );
+    }
+    if (res.status === 403) {
+      throw new Error(
+        "Sem permissão pra publicar. O product 'Share on LinkedIn' precisa estar ativo no app + o usuário precisa reautorizar (escopos novos)."
+      );
+    }
+    if (res.status === 422) {
+      throw new Error(`LinkedIn rejeitou o conteúdo: ${message}`);
+    }
+    throw new Error(message);
+  }
+
+  // O URN do post vai no header `x-restli-id` OU no body.id
+  const urn =
+    res.headers.get("x-restli-id") ??
+    (await res
+      .clone()
+      .json()
+      .then((j: { id?: string }) => j.id ?? null)
+      .catch(() => null));
+
+  if (!urn) {
+    throw new Error(
+      "LinkedIn aceitou mas não devolveu o URN do post. Verifica no perfil se subiu."
+    );
+  }
+
+  // URL pública do post (formato determinístico do LinkedIn)
+  // urn:li:share:1234567 → https://www.linkedin.com/feed/update/urn:li:share:1234567
+  const url = `https://www.linkedin.com/feed/update/${encodeURIComponent(urn)}`;
+
+  return { urn, url };
 }
 
 /**
