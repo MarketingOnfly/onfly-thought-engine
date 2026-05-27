@@ -61,12 +61,18 @@ export function useStyleScore(opts: UseStyleScoreOpts) {
     try {
       const text = targetText ?? body ?? primaryBody ?? null;
       const isOverride = !!body && body !== primaryBody;
-      const res = await fetch(`/api/content/${draftId}/score`, {
+      // Quando não tem override, manda POST sem body algum (estava
+      // mandando body: "" que funcionava por acidente — sem header
+      // content-length em alguns runtimes, sem JSON parsável)
+      const init: RequestInit = {
         method: "POST",
         cache: "no-store",
-        headers: { "content-type": "application/json" },
-        body: isOverride ? JSON.stringify({ body: text }) : "",
-      });
+      };
+      if (isOverride) {
+        init.headers = { "content-type": "application/json" };
+        init.body = JSON.stringify({ body: text });
+      }
+      const res = await fetch(`/api/content/${draftId}/score`, init);
       if (res.ok) {
         const data = await res.json();
         setScore(data.score);

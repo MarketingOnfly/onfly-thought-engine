@@ -140,7 +140,7 @@ export async function publishPost(opts: {
   linkedinUserId: string; // sub do userinfo, ex: "abc123"
   text: string;
   visibility?: "PUBLIC" | "CONNECTIONS";
-}): Promise<{ urn: string; url: string }> {
+}): Promise<{ urn: string | null; url: string | null }> {
   const visibility = opts.visibility ?? "PUBLIC";
   const authorUrn = `urn:li:person:${opts.linkedinUserId}`;
 
@@ -203,10 +203,13 @@ export async function publishPost(opts: {
       .then((j: { id?: string }) => j.id ?? null)
       .catch(() => null));
 
+  // IMPORTANTE: o status 200 do LinkedIn significa que o post FOI
+  // publicado. Mesmo sem URN, não podemos throw aqui — se a gente
+  // throw, o cliente vai assumir que falhou e pode tentar republicar,
+  // gerando POST DUPLICADO no feed do líder. Devolvemos urn=null +
+  // url=null e o caller marca como "publicado sem rastreio".
   if (!urn) {
-    throw new Error(
-      "LinkedIn aceitou mas não devolveu o URN do post. Verifica no perfil se subiu."
-    );
+    return { urn: null, url: null };
   }
 
   // URL pública do post (formato determinístico do LinkedIn)

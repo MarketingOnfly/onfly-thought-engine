@@ -108,16 +108,27 @@ export async function POST(
       text,
     });
 
+    // Se LinkedIn aceitou (200) mas não devolveu URN, o post foi pro ar
+    // mas a gente não consegue rastrear. Marcamos como publicado pra
+    // EVITAR republicação duplicada e setamos um aviso em publish_error.
     const publishedAt = new Date().toISOString();
+    const trackingNote = urn
+      ? null
+      : "Publicado mas LinkedIn não devolveu o URN do post — não dá pra linkar direto. Confira no seu perfil.";
+
     const { data: updated, error: updErr } = await supabase
       .from("content_drafts")
       .update({
         published_at: publishedAt,
         linkedin_post_urn: urn,
         linkedin_post_url: url,
-        publish_error: null,
+        publish_error: trackingNote,
         status: "approved",
+        // Grava em ambos os campos pra UI ficar consistente — antes o
+        // editor lia draft_markdown enquanto a publicação ia pra
+        // final_markdown, desincronizando após publicar.
         final_markdown: text,
+        draft_markdown: text,
       })
       .eq("id", id)
       .eq("user_id", user.id)
@@ -138,14 +149,19 @@ export async function POST(
       );
     }
 
-    // Notifica o sininho do próprio líder
-    await supabase.from("notifications").insert({
+    // Notifica o sininho — null guard em topic + log de erro em vez
+    // de fire-and-forget silencioso
+    const topicSnippet = (draft.topic ?? "post").slice(0, 80);
+    const { error: notifErr } = await supabase.from("notifications").insert({
       target_user_id: user.id,
       kind: "campaign_ready",
       title: "Post publicado no LinkedIn",
-      body: `"${draft.topic.slice(0, 80)}" tá no ar.`,
-      link: url,
+      body: `"${topicSnippet}" tá no ar.`,
+      link: url ?? "/dashboard/library",
     });
+    if (notifErr) {
+      console.error("[publish] failed to create notification", notifErr);
+    }
 
     return NextResponse.json({ draft: updated, url, urn });
   } catch (err) {

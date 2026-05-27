@@ -82,6 +82,29 @@ export async function POST(request: NextRequest) {
           truncated: yt.truncated,
         });
       }
+      // Detectar Spotify — não conseguimos transcrever áudio,
+      // explicamos o caminho alternativo em vez de tentar parse genérico
+      // que falharia ou devolveria texto sem valor.
+      const host = (() => {
+        try {
+          return new URL(input.url).hostname.replace(/^www\./, "");
+        } catch {
+          return "";
+        }
+      })();
+      if (
+        host.endsWith("spotify.com") ||
+        host.endsWith("podcasts.apple.com") ||
+        host.endsWith("podcasts.google.com")
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Spotify/Apple/Google Podcasts não liberam o áudio pra transcrição externa. Caminho: busca a versão YouTube do mesmo episódio (a maioria dos podcasts publica nos dois) e cola o link do YouTube aqui — a gente transcreve em ~1s.",
+          },
+          { status: 400 }
+        );
+      }
       const art = await extractArticle(input.url);
       return NextResponse.json<ExtractResult>({
         kind: "news",

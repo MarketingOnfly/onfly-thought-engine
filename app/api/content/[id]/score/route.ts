@@ -26,16 +26,18 @@ export async function POST(
   const supabase = await createSupabaseServerClient();
 
   // body opcional: { body?: string }
+  // Cap de 20k chars — Anthropic já trunca em 6k dentro do scoreStyle,
+  // mas o cap aqui evita payload abusivo na entrada (DoS leve por
+  // usuário autenticado que pode mandar 1MB de texto)
+  const MAX_BODY_CHARS = 20_000;
   let overrideBody: string | null = null;
-  if (request.headers.get("content-length") !== "0") {
-    try {
-      const json = await request.json();
-      if (typeof json?.body === "string" && json.body.trim().length > 0) {
-        overrideBody = json.body;
-      }
-    } catch {
-      // sem body — ok, vamos avaliar o draft primário
+  try {
+    const json = await request.json();
+    if (typeof json?.body === "string" && json.body.trim().length > 0) {
+      overrideBody = json.body.slice(0, MAX_BODY_CHARS);
     }
+  } catch {
+    // sem body ou body vazio — ok, vamos avaliar o draft primário
   }
 
   const [{ data: draft }, { data: profile }] = await Promise.all([

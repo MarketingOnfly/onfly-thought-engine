@@ -13,7 +13,11 @@
 
 import { YoutubeTranscript } from "youtube-transcript";
 
-const MAX_CHARS = 25_000;
+// Cap em 45k chars (~11k tokens) — cobre podcasts de até ~3h sem
+// estourar contexto da Sonnet. Anteriormente estava em 25k mas
+// perdíamos contexto em podcasts de 60-90min, justamente os mais
+// interessantes pra leitura de mercado.
+const MAX_CHARS = 45_000;
 
 export interface YouTubeTranscriptResult {
   videoId: string;

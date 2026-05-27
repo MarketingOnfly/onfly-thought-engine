@@ -89,7 +89,12 @@ export function FeedbackPanel({ draftId, onRevised }: FeedbackPanelProps) {
   }
 
   async function retryWithFeedback() {
-    if (!comment.trim() || !onRevised) return;
+    // Usa o comentário SALVO (existing.comment) em vez do estado local
+    // — se o líder editou o textarea entre o submit e o clique, o retry
+    // ainda usa o que foi gravado no feedback.
+    const savedComment = (existing?.comment ?? comment).trim();
+    const savedRating = existing?.rating ?? rating;
+    if (!savedComment || !onRevised || !savedRating) return;
     setRevising(true);
     setError(null);
     const res = await apiFetch<{ draft: ContentDraft }>(
@@ -98,7 +103,7 @@ export function FeedbackPanel({ draftId, onRevised }: FeedbackPanelProps) {
         method: "POST",
         body: JSON.stringify({
           draft_id: draftId,
-          instructions: `Apliquei esse feedback (nota ${rating}/5): "${comment.trim()}". Reescreve o texto inteiro corrigindo esses pontos. Mantém o tema e o tamanho aproximado.`,
+          instructions: `Apliquei esse feedback (nota ${savedRating}/5): "${savedComment}". Reescreve o texto inteiro corrigindo esses pontos. Mantém o tema e o tamanho aproximado.`,
         }),
       }
     );

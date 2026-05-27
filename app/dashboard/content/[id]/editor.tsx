@@ -254,14 +254,16 @@ export default function ContentEditor({
     }
   }
 
-  async function revise() {
+  async function revise(presetInstructions?: string) {
+    const instructions = presetInstructions ?? revisionPrompt;
+    if (instructions.trim().length < 5) return;
     setRevising(true);
     setError(null);
     const res = await apiFetch<{ draft: ContentDraft }>("/api/content/revise", {
       method: "POST",
       body: JSON.stringify({
         draft_id: draft.id,
-        instructions: revisionPrompt,
+        instructions,
       }),
     });
     setRevising(false);
@@ -271,7 +273,11 @@ export default function ContentEditor({
     }
     setDraft(res.data.draft);
     setLocalText(res.data.draft.draft_markdown ?? "");
-    setRevisionPrompt("");
+    if (!presetInstructions) setRevisionPrompt("");
+    // Pra presets, rola pro topo pra o líder ver o texto novo
+    if (presetInstructions) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   }
 
   async function approve() {
@@ -407,22 +413,28 @@ export default function ContentEditor({
             <ExternalLink className="h-3 w-3 opacity-70" />
           </a>
         )}
+        {draft.published_at && !draft.linkedin_post_url && (
+          <span
+            className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700"
+            title="LinkedIn aceitou mas não devolveu URL do post — confere direto no seu perfil"
+          >
+            <Linkedin className="h-3 w-3" /> Publicado (sem link)
+          </span>
+        )}
         <span className="text-xs text-muted-foreground">
           Atualizado {formatDate(draft.updated_at)}
         </span>
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          {/* Publicar no LinkedIn — só pra posts, e quando ainda não publicou */}
-          {isPost && !draft.published_at && (
+          {/* Publicar no LinkedIn — só pra posts, e quando ainda não publicou.
+              Se LinkedIn não tá conectado, troca pra link de conexão
+              em vez de botão cinza com tooltip escondido. */}
+          {isPost && !draft.published_at && linkedinReady && (
             <Button
               variant="primary"
               size="sm"
               onClick={publish}
-              disabled={publishing || !linkedinReady}
-              title={
-                linkedinReady
-                  ? "Publica direto no seu perfil LinkedIn"
-                  : "Conecte o LinkedIn em Analytics primeiro"
-              }
+              disabled={publishing}
+              title="Publica direto no seu perfil LinkedIn"
             >
               {publishing ? (
                 <>
@@ -433,6 +445,16 @@ export default function ContentEditor({
                   <Send className="h-3.5 w-3.5" /> Publicar
                 </>
               )}
+            </Button>
+          )}
+          {isPost && !draft.published_at && !linkedinReady && (
+            <Button asChild variant="outline" size="sm">
+              <a
+                href="/dashboard/analytics"
+                title="Conecta o LinkedIn pra liberar publicação"
+              >
+                <Linkedin className="h-3.5 w-3.5" /> Conectar pra publicar
+              </a>
             </Button>
           )}
           {isApproved ? (
@@ -781,7 +803,7 @@ export default function ContentEditor({
                     variant="primary"
                     size="sm"
                     className="mt-3 w-full"
-                    onClick={revise}
+                    onClick={() => revise()}
                     disabled={revising || revisionPrompt.trim().length < 5}
                   >
                     {revising ? (
@@ -795,6 +817,54 @@ export default function ContentEditor({
                       </>
                     )}
                   </Button>
+
+                  {/* Atalhos de revisão 1-clique — vão direto sem digitar */}
+                  <div className="mt-3 border-t border-border pt-3">
+                    <p className="mb-2 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      Atalhos
+                    </p>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          revise(
+                            "Mantém a tese mas torna o texto mais ousado e provocador. Hook mais ácido. Fechamento que aposta numa visão de futuro. Cortar qualquer floreio que sobrar."
+                          )
+                        }
+                        disabled={revising}
+                        className="rounded-lg border border-border bg-background px-2 py-2 text-[11px] font-medium text-foreground transition hover:border-brand-400 hover:bg-secondary disabled:opacity-50"
+                        title="Hook mais ácido, aposta mais forte"
+                      >
+                        + Ousado
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          revise(
+                            "Mantém a tese mas torna o texto mais sóbrio e analítico. Cortar adjetivos fortes. Mais dado, menos opinião. Linguagem de operador, sem provocação direta."
+                          )
+                        }
+                        disabled={revising}
+                        className="rounded-lg border border-border bg-background px-2 py-2 text-[11px] font-medium text-foreground transition hover:border-brand-400 hover:bg-secondary disabled:opacity-50"
+                        title="Mais analítico e contido"
+                      >
+                        + Sóbrio
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          revise(
+                            "Refaz o texto do zero, mantendo apenas o tema e a tese central. Estrutura, hook, exemplo e fechamento todos diferentes — outro caminho narrativo."
+                          )
+                        }
+                        disabled={revising}
+                        className="rounded-lg border border-border bg-background px-2 py-2 text-[11px] font-medium text-foreground transition hover:border-brand-400 hover:bg-secondary disabled:opacity-50"
+                        title="Mesma tese, outro caminho"
+                      >
+                        ↻ Refazer
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
 
