@@ -1,7 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Save } from "lucide-react";
+import {
+  Hash,
+  Layers,
+  LayoutGrid,
+  MessageSquareQuote,
+  NotebookPen,
+  Quote,
+  Save,
+  Target,
+  Users,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -38,6 +48,7 @@ type SectionMeta = {
   id: string;
   label: string;
   count: () => number;
+  icon: typeof Users;
 };
 
 export default function StyleEditor({ initial }: { initial: LeaderProfile }) {
@@ -97,25 +108,53 @@ export default function StyleEditor({ initial }: { initial: LeaderProfile }) {
 
   const sections: SectionMeta[] = useMemo(
     () => [
-      { id: "audiencia", label: "Audiência", count: () => form.audience_segments.length },
-      { id: "objetivos", label: "Objetivos", count: () => form.objectives.length },
+      {
+        id: "audiencia",
+        label: "Audiência",
+        count: () => form.audience_segments.length,
+        icon: Users,
+      },
+      {
+        id: "objetivos",
+        label: "Objetivos",
+        count: () => form.objectives.length,
+        icon: Target,
+      },
       {
         id: "voz",
         label: "Como você fala",
         count: () => form.tone_traits.length + form.tone_avoid.length,
+        icon: MessageSquareQuote,
       },
-      { id: "formatos", label: "Formatos", count: () => form.preferred_formats.length },
-      { id: "tipos", label: "Tipos de post", count: () => form.content_types.length },
-      { id: "temas", label: "Temas", count: () => form.themes.length },
+      {
+        id: "formatos",
+        label: "Formatos",
+        count: () => form.preferred_formats.length,
+        icon: LayoutGrid,
+      },
+      {
+        id: "tipos",
+        label: "Tipos de post",
+        count: () => form.content_types.length,
+        icon: Layers,
+      },
+      {
+        id: "temas",
+        label: "Temas",
+        count: () => form.themes.length,
+        icon: Hash,
+      },
       {
         id: "aberturas",
         label: "Aberturas",
         count: () => form.preferred_hook_styles.length,
+        icon: Quote,
       },
       {
         id: "extras",
         label: "Observações",
         count: () => (form.custom_briefing.trim() ? 1 : 0),
+        icon: NotebookPen,
       },
     ],
     [form]
@@ -130,6 +169,7 @@ export default function StyleEditor({ initial }: { initial: LeaderProfile }) {
           id="audiencia"
           title="Audiência"
           subtitle="Pra quem você fala. Marca segmentos prontos e, se precisar, refina com texto."
+          icon={Users}
         >
           <Label className="text-xs uppercase tracking-wide text-muted-foreground">
             Segmentos
@@ -158,6 +198,7 @@ export default function StyleEditor({ initial }: { initial: LeaderProfile }) {
           id="objetivos"
           title="Objetivos"
           subtitle="Pra que cada conteúdo seu serve. O motor calibra o tipo de fechamento por aqui."
+          icon={Target}
         >
           <CardMultiSelect
             options={[...OBJECTIVES]}
@@ -171,6 +212,7 @@ export default function StyleEditor({ initial }: { initial: LeaderProfile }) {
           id="voz"
           title="Como você fala"
           subtitle="Os traços do seu jeito e o que jamais aparece."
+          icon={MessageSquareQuote}
         >
           <Label className="text-xs uppercase tracking-wide text-muted-foreground">
             Como você soa
@@ -209,6 +251,7 @@ export default function StyleEditor({ initial }: { initial: LeaderProfile }) {
           id="formatos"
           title="Formatos que você publica"
           subtitle="Quais formatos fazem sentido no seu fluxo."
+          icon={LayoutGrid}
         >
           <CardMultiSelect
             options={[...CONTENT_FORMATS]}
@@ -222,6 +265,7 @@ export default function StyleEditor({ initial }: { initial: LeaderProfile }) {
           id="tipos"
           title="Tipos de post que você publica"
           subtitle="As formas de história que você costuma contar."
+          icon={Layers}
         >
           <CardMultiSelect
             options={[...CONTENT_TYPES]}
@@ -235,6 +279,7 @@ export default function StyleEditor({ initial }: { initial: LeaderProfile }) {
           id="temas"
           title="Seus temas"
           subtitle="Os assuntos em que você é referência. Marca os prontos ou adiciona o seu."
+          icon={Hash}
         >
           <ChipMultiSelect
             options={[
@@ -279,6 +324,7 @@ export default function StyleEditor({ initial }: { initial: LeaderProfile }) {
           id="aberturas"
           title="Como você gosta de abrir um post"
           subtitle="As aberturas que combinam com seu jeito. Viram opções rápidas na hora de criar."
+          icon={Quote}
         >
           <CardMultiSelect
             options={[...HOOK_STYLES]}
@@ -292,6 +338,7 @@ export default function StyleEditor({ initial }: { initial: LeaderProfile }) {
           id="extras"
           title="Observações livres (opcional)"
           subtitle="Algo importante que não cabe nos campos acima — entra no contexto do motor sempre."
+          icon={NotebookPen}
         >
           <Textarea
             value={form.custom_briefing}
@@ -329,12 +376,14 @@ function SectionNav({ sections }: { sections: SectionMeta[] }) {
     >
       {sections.map((s) => {
         const count = s.count();
+        const Icon = s.icon;
         return (
           <a
             key={s.id}
             href={`#${s.id}`}
-            className="inline-flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
           >
+            <Icon className="h-3.5 w-3.5" />
             <span>{s.label}</span>
             {count > 0 && (
               <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-brand-100 px-1 text-[10px] font-semibold text-brand-700">
@@ -352,11 +401,13 @@ function Section({
   id,
   title,
   subtitle,
+  icon: Icon,
   children,
 }: {
   id: string;
   title: string;
   subtitle?: string;
+  icon?: typeof Users;
   children: React.ReactNode;
 }) {
   return (
@@ -366,9 +417,18 @@ function Section({
         "scroll-mt-32 rounded-2xl border border-border bg-card p-6 shadow-sm"
       )}
     >
-      <header>
-        <h2 className="font-display text-xl tracking-tight">{title}</h2>
-        {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}
+      <header className="flex items-start gap-3">
+        {Icon && (
+          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
+            <Icon className="h-4 w-4" />
+          </span>
+        )}
+        <div className="min-w-0 flex-1">
+          <h2 className="font-display text-xl tracking-tight">{title}</h2>
+          {subtitle && (
+            <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
+          )}
+        </div>
       </header>
       <div className="mt-5">{children}</div>
     </section>

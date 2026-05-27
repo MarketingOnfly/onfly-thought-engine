@@ -4,10 +4,12 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   AlertCircle,
+  BookOpen,
   CheckCircle2,
   ChevronDown,
   ExternalLink,
   FileText,
+  Linkedin,
   Loader2,
   Plus,
   RefreshCw,
@@ -65,11 +67,14 @@ export default function LibraryTabs(props: {
   return (
     <Tabs defaultValue="content" className="mt-8">
       <TabsList>
-        <TabsTrigger value="content">
+        <TabsTrigger value="content" className="gap-1.5">
+          <FileText className="h-3.5 w-3.5" />
           Conteúdos <span className="ml-1 opacity-70">({drafts.length})</span>
         </TabsTrigger>
-        <TabsTrigger value="references">
-          Referências <span className="ml-1 opacity-70">({referenceCount})</span>
+        <TabsTrigger value="references" className="gap-1.5">
+          <BookOpen className="h-3.5 w-3.5" />
+          Referências{" "}
+          <span className="ml-1 opacity-70">({referenceCount})</span>
         </TabsTrigger>
       </TabsList>
 
@@ -221,42 +226,81 @@ function DraftsList({
 
   if (!drafts.length)
     return (
-      <p className="rounded-xl border border-dashed border-border bg-secondary/30 p-8 text-center text-sm text-muted-foreground">
-        Sem conteúdos ainda. Vai em "Criar conteúdo" pra começar.
-      </p>
+      <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-border bg-secondary/30 p-10 text-center">
+        <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-600">
+          <FileText className="h-5 w-5" />
+        </span>
+        <div>
+          <p className="text-sm font-medium">Nenhum conteúdo ainda</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Quando você gerar um post ou artigo, ele aparece aqui.
+          </p>
+        </div>
+        <Button asChild variant="primary" size="sm">
+          <Link href="/dashboard/create">
+            <Plus className="h-3.5 w-3.5" /> Criar primeiro conteúdo
+          </Link>
+        </Button>
+      </div>
     );
 
   return (
     <ul className="space-y-3">
-      {drafts.map((d) => (
-        <li
-          key={d.id}
-          className="rounded-2xl border border-border bg-card p-5 shadow-sm transition-shadow hover:shadow-md"
-        >
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <Link href={`/dashboard/content/${d.id}`} className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant={d.format === "linkedin_post" ? "brand" : "soft"}>
-                  {d.format === "linkedin_post" ? "Post" : "Artigo"}
-                </Badge>
-                <Badge variant="outline" className="capitalize">
-                  {d.status}
-                </Badge>
-                <span className="text-xs text-muted-foreground">
-                  {formatDate(d.updated_at)}
-                </span>
-              </div>
-              <h3 className="mt-2 font-display text-lg tracking-tight">{d.topic}</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {truncate(d.draft_markdown ?? d.brief ?? "", 200)}
-              </p>
-            </Link>
-            <Button variant="ghost" size="icon" onClick={() => remove(d.id)}>
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        </li>
-      ))}
+      {drafts.map((d) => {
+        const isPost = d.format === "linkedin_post";
+        const FormatIcon = isPost ? Linkedin : FileText;
+        return (
+          <li
+            key={d.id}
+            className="rounded-2xl border border-border bg-card p-5 shadow-sm transition-shadow hover:shadow-md"
+          >
+            <div className="flex flex-wrap items-start gap-3">
+              <span
+                className={cn(
+                  "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
+                  isPost
+                    ? "bg-brand-100 text-brand-700"
+                    : "bg-secondary text-secondary-foreground"
+                )}
+                title={isPost ? "Post de LinkedIn" : "Artigo"}
+              >
+                <FormatIcon className="h-4 w-4" />
+              </span>
+              <Link
+                href={`/dashboard/content/${d.id}`}
+                className="min-w-0 flex-1"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={isPost ? "brand" : "soft"}>
+                    {isPost ? "Post" : "Artigo"}
+                  </Badge>
+                  <Badge variant="outline" className="capitalize">
+                    {d.status}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">
+                    {formatDate(d.updated_at)}
+                  </span>
+                </div>
+                <h3 className="mt-2 font-display text-lg tracking-tight">
+                  {d.topic}
+                </h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {truncate(d.draft_markdown ?? d.brief ?? "", 200)}
+                </p>
+              </Link>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => remove(d.id)}
+                title="Apagar"
+                aria-label="Apagar"
+              >
+                <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+              </Button>
+            </div>
+          </li>
+        );
+      })}
     </ul>
   );
 }

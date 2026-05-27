@@ -8,10 +8,10 @@ import {
   ChevronRight,
   Compass,
   ExternalLink,
+  FileText,
+  Linkedin,
   RefreshCw,
-  Sparkles,
   Trash2,
-  Wand2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -278,14 +278,14 @@ export default function DiscoverPanel({
                       size="sm"
                       onClick={() => turnIntoContent(idea, "linkedin_post")}
                     >
-                      <Wand2 className="h-3.5 w-3.5" /> Gerar post
+                      <Linkedin className="h-3.5 w-3.5" /> Gerar post
                     </Button>
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => turnIntoContent(idea, "article")}
                     >
-                      Gerar artigo
+                      <FileText className="h-3.5 w-3.5" /> Gerar artigo
                     </Button>
                     <Button
                       variant="ghost"

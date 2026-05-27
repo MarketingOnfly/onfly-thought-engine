@@ -2,7 +2,17 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Linkedin, Sparkles, Loader2 } from "lucide-react";
+import {
+  BookOpen,
+  Check,
+  FileText,
+  Linkedin,
+  Loader2,
+  MessageSquareQuote,
+  Sparkles,
+  User,
+  Users,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -217,7 +227,7 @@ export default function OnboardingWizard({
           )}
 
           {/* Section 1: identidade */}
-          <Section title="Quem você é">
+          <Section title="Quem você é" icon={User}>
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <Label htmlFor="full_name">Nome completo</Label>
@@ -269,7 +279,7 @@ export default function OnboardingWizard({
           </Section>
 
           {/* Section 2: audiência + objetivo */}
-          <Section title="Pra quem você fala — e por quê">
+          <Section title="Pra quem você fala — e por quê" icon={Users}>
             <div className="grid gap-4">
               <div>
                 <Label>Pra quem você escreve (marque um ou mais)</Label>
@@ -349,7 +359,7 @@ export default function OnboardingWizard({
           </Section>
 
           {/* Section 3: tom */}
-          <Section title="Como você fala">
+          <Section title="Como você fala" icon={MessageSquareQuote}>
             <div>
               <Label>Como você quer soar (escolha 2-5)</Label>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -387,7 +397,7 @@ export default function OnboardingWizard({
           </Section>
 
           {/* Section 4: documentos */}
-          <Section title="Documentos de base (opcional)">
+          <Section title="Documentos de base (opcional)" icon={FileText}>
             <p className="mb-3 text-xs text-muted-foreground">
               Cases, dados internos, manifestos, slides — qualquer texto que sirva de matéria-prima.
               PDF, DOCX, TXT, MD. Você pode adicionar mais depois.
@@ -396,7 +406,7 @@ export default function OnboardingWizard({
           </Section>
 
           {/* Section 5: referências */}
-          <Section title="Referências (opcional, mas valioso)">
+          <Section title="Referências (opcional, mas valioso)" icon={BookOpen}>
             <div className="grid gap-4">
               <div>
                 <Label htmlFor="refs_profiles">
@@ -472,14 +482,23 @@ export default function OnboardingWizard({
 
 function Section({
   title,
+  icon: Icon,
   children,
 }: {
   title: string;
+  icon?: typeof User;
   children: React.ReactNode;
 }) {
   return (
     <section className="mt-10 border-t border-border pt-6 first:mt-8 first:border-0 first:pt-0">
-      <h2 className="font-display text-xl tracking-tight">{title}</h2>
+      <h2 className="flex items-center gap-3 font-display text-xl tracking-tight">
+        {Icon && (
+          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
+            <Icon className="h-4 w-4" />
+          </span>
+        )}
+        {title}
+      </h2>
       <div className="mt-4">{children}</div>
     </section>
   );
