@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5BC0FF"/>
+      <stop offset="100%" stop-color="#009EFB"/>
+    </linearGradient>
+  </defs>
+  <rect width="100" height="100" rx="22" fill="url(#bg)"/>
+
+  <!-- Globo em wireframe — círculo + meridiano + equador + linhas auxiliares -->
+  <g fill="none" stroke="#FFFFFF" stroke-width="3.2" stroke-linecap="round">
+    <!-- esfera principal -->
+    <circle cx="44" cy="58" r="26"/>
+    <!-- equador (achatado pra dar sensação 3D) -->
+    <ellipse cx="44" cy="58" rx="26" ry="9"/>
+    <!-- meridiano vertical -->
+    <ellipse cx="44" cy="58" rx="10" ry="26"/>
+  </g>
+
+  <!-- Avião — paper plane pointing up-right -->
+  <g fill="#FFFFFF" stroke="#FFFFFF" stroke-width="1" stroke-linejoin="round">
+    <path d="
+      M 86,18
+      L 56,40
+      L 64,44
+      L 70,62
+      L 74,52
+      L 82,46
+      Z
+    "/>
+  </g>
+
+  <!-- Rastro do avião (tracejado curvo) -->
+  <path
+    d="M 62,40 Q 50,46 38,44"
+    fill="none"
+    stroke="#FFFFFF"
+    stroke-width="2.4"
+    stroke-linecap="round"
+    stroke-dasharray="0.1 5"
+    opacity="0.85"
+  />
+</svg>
