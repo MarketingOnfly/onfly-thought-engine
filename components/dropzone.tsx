@@ -3,17 +3,19 @@
 import { useCallback, useId, useRef, useState } from "react";
 import { CheckCircle2, FileText, Upload, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { LeaderDocument } from "@/lib/db/types";
 
 interface UploadState {
   name: string;
   size: number;
-  status: "uploading" | "done" | "error";
+  status: "uploading" | "parsing" | "done" | "error";
   error?: string;
 }
 
 const ACCEPTED = ".pdf,.docx,.txt,.md,.markdown";
 const ACCEPTED_HINT = "PDF · DOCX · TXT · MD";
+const MAX_BYTES = 15 * 1024 * 1024;
 
 export function Dropzone({
   onUploaded,
@@ -34,29 +36,102 @@ export function Dropzone({
       const arr = Array.from(files);
       if (!arr.length) return;
 
-      // optimistic UI state
-      const initial: UploadState[] = arr.map((f) => ({
+      // Validação de tamanho no cliente
+      const tooBig = arr.filter((f) => f.size > MAX_BYTES);
+      const okFiles = arr.filter((f) => f.size <= MAX_BYTES);
+
+      if (tooBig.length) {
+        setItems((prev) => [
+          ...prev,
+          ...tooBig.map<UploadState>((f) => ({
+            name: f.name,
+            size: f.size,
+            status: "error",
+            error: `Acima de ${Math.round(MAX_BYTES / 1024 / 1024)}MB`,
+          })),
+        ]);
+      }
+      if (!okFiles.length) return;
+
+      // Optimistic UI
+      const initial: UploadState[] = okFiles.map((f) => ({
         name: f.name,
         size: f.size,
         status: "uploading",
       }));
       setItems((prev) => [...prev, ...initial]);
 
-      const formData = new FormData();
-      for (const f of arr) formData.append("files", f);
+      const supabase = createSupabaseBrowserClient();
+      const { data: userRes } = await supabase.auth.getUser();
+      const userId = userRes.user?.id;
+      if (!userId) {
+        setItems((prev) =>
+          prev.map((it) =>
+            initial.find((i) => i.name === it.name)
+              ? { ...it, status: "error", error: "Sessão expirou" }
+              : it
+          )
+        );
+        return;
+      }
 
+      // Sobe cada arquivo direto pro Storage — sem passar pelo route
+      // handler do Vercel (que tem limite de ~4.5MB).
+      const uploads = await Promise.all(
+        okFiles.map(async (f) => {
+          const safeName = f.name.replace(/[^\w.\-]+/g, "_");
+          const path = `${userId}/${crypto.randomUUID()}-${safeName}`;
+          const { error } = await supabase.storage
+            .from("leader-documents")
+            .upload(path, f, {
+              upsert: false,
+              contentType: f.type || "application/octet-stream",
+            });
+          if (error) {
+            return {
+              name: f.name,
+              ok: false as const,
+              error: error.message,
+            };
+          }
+          return { name: f.name, ok: true as const, path };
+        })
+      );
+
+      // Atualiza UI: storage upload OK → vai pra "parsing"
+      setItems((prev) =>
+        prev.map((it) => {
+          const u = uploads.find((x) => x.name === it.name);
+          if (!u || it.status !== "uploading") return it;
+          return u.ok
+            ? { ...it, status: "parsing" }
+            : { ...it, status: "error", error: u.error };
+        })
+      );
+
+      const toParse = uploads.filter((u) => u.ok) as Array<{
+        name: string;
+        ok: true;
+        path: string;
+      }>;
+      if (!toParse.length) return;
+
+      // Chama o server pra puxar do Storage, parsear e salvar
       try {
         const res = await fetch("/api/documents/upload", {
           method: "POST",
-          body: formData,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            items: toParse.map((u) => ({ storage_path: u.path, name: u.name })),
+          }),
         });
         const data = await res.json().catch(() => ({}));
 
         if (!res.ok) {
           setItems((prev) =>
             prev.map((it) =>
-              initial.find((i) => i.name === it.name && it.status === "uploading")
-                ? { ...it, status: "error", error: data.error ?? "Falha no upload" }
+              toParse.find((u) => u.name === it.name) && it.status === "parsing"
+                ? { ...it, status: "error", error: data.error ?? "Falha no parse" }
                 : it
             )
           );
@@ -67,29 +142,27 @@ export function Dropzone({
           (it: { name: string }) => it.name
         );
         const failedMap: Record<string, string> = Object.fromEntries(
-          (data.failed ?? []).map((it: { name: string; error: string }) => [it.name, it.error])
+          (data.failed ?? []).map((it: { name: string; error: string }) => [
+            it.name,
+            it.error,
+          ])
         );
 
         setItems((prev) =>
           prev.map((it) => {
-            if (it.status !== "uploading") return it;
-            if (createdNames.includes(it.name)) {
-              return { ...it, status: "done" };
-            }
-            if (failedMap[it.name]) {
+            if (it.status !== "parsing") return it;
+            if (createdNames.includes(it.name)) return { ...it, status: "done" };
+            if (failedMap[it.name])
               return { ...it, status: "error", error: failedMap[it.name] };
-            }
             return it;
           })
         );
 
-        if (data.items?.length && onUploaded) {
-          onUploaded(data.items);
-        }
+        if (data.items?.length && onUploaded) onUploaded(data.items);
       } catch (err) {
         setItems((prev) =>
           prev.map((it) =>
-            initial.find((i) => i.name === it.name && it.status === "uploading")
+            toParse.find((u) => u.name === it.name) && it.status === "parsing"
               ? {
                   ...it,
                   status: "error",
@@ -174,6 +247,9 @@ export function Dropzone({
               </span>
               {it.status === "uploading" && (
                 <span className="font-mono text-xs text-brand-700">enviando…</span>
+              )}
+              {it.status === "parsing" && (
+                <span className="font-mono text-xs text-brand-700">lendo…</span>
               )}
               {it.status === "done" && (
                 <CheckCircle2 className="h-4 w-4 shrink-0 text-brand-600" />

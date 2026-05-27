@@ -32,10 +32,12 @@ export default function AnalyticsView({
   connection,
   metrics: initialMetrics,
   flash,
+  linkedinConfig,
 }: {
   connection: LinkedInConnection | null;
   metrics: MetricRow[];
   flash: { connected: boolean; error: string | null };
+  linkedinConfig: { configured: boolean; missing: string[] };
 }) {
   const [conn, setConn] = useState(connection);
   const [metrics, setMetrics] = useState<MetricRow[]>(initialMetrics);
@@ -172,12 +174,40 @@ export default function AnalyticsView({
         </div>
       )}
 
+      {/* LinkedIn não configurado — banner explicativo pro admin */}
+      {!linkedinConfig.configured && (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-5 text-sm text-amber-900">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+            <div className="space-y-2">
+              <p className="font-semibold">
+                LinkedIn ainda não está configurado neste deploy
+              </p>
+              <p>
+                Quem é admin precisa adicionar essas variáveis no Vercel
+                (Project Settings → Environment Variables):
+              </p>
+              <ul className="list-disc space-y-0.5 pl-5 font-mono text-xs">
+                {linkedinConfig.missing.map((k) => (
+                  <li key={k}>{k}</li>
+                ))}
+              </ul>
+              <p className="text-xs">
+                Depois de salvar, faça um novo deploy (ou redeploy o último)
+                — as envs só ficam ativas no próximo build.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* LinkedIn connection */}
       <LinkedInCard
         conn={conn}
         syncing={syncing}
         onSync={sync}
         onDisconnect={disconnect}
+        disabled={!linkedinConfig.configured}
       />
 
       {/* Stats hero */}
@@ -393,11 +423,13 @@ function LinkedInCard({
   syncing,
   onSync,
   onDisconnect,
+  disabled = false,
 }: {
   conn: LinkedInConnection | null;
   syncing: boolean;
   onSync: () => Promise<void>;
   onDisconnect: () => Promise<void>;
+  disabled?: boolean;
 }) {
   const profileName =
     (conn?.profile_data as { name?: string } | null)?.name ?? null;
@@ -476,11 +508,17 @@ function LinkedInCard({
               app Onfly aprovada em Marketing Developer Platform (LinkedIn).
             </p>
           </div>
-          <Button asChild variant="primary" size="sm">
-            <a href="/api/linkedin/auth">
+          {disabled ? (
+            <Button variant="primary" size="sm" disabled title="LinkedIn não configurado no servidor">
               <Linkedin className="h-3.5 w-3.5" /> Conectar LinkedIn
-            </a>
-          </Button>
+            </Button>
+          ) : (
+            <Button asChild variant="primary" size="sm">
+              <a href="/api/linkedin/auth">
+                <Linkedin className="h-3.5 w-3.5" /> Conectar LinkedIn
+              </a>
+            </Button>
+          )}
         </div>
       )}
     </div>

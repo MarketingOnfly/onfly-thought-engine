@@ -9,7 +9,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Dropzone } from "@/components/dropzone";
 import { PresetOrCustom } from "@/components/preset-or-custom";
-import { ROLE_PRESETS, AREA_PRESETS } from "@/lib/style-presets";
+import {
+  ROLE_PRESETS,
+  AREA_PRESETS,
+  AUDIENCE_SEGMENTS,
+} from "@/lib/style-presets";
 import type { LeaderProfile, ReferenceLink } from "@/lib/db/types";
 
 const TONE_TRAITS = [
@@ -55,6 +59,7 @@ export default function OnboardingWizard({
     area: initialProfile?.area ?? "",
     linkedin_url: initialProfile?.linkedin_url ?? "",
     target_audience: initialProfile?.target_audience ?? "",
+    audience_segments: initialProfile?.audience_segments ?? [],
     tone_traits: initialProfile?.tone_traits ?? [],
     tone_examples: initialProfile?.tone_examples ?? "",
     main_objective: initialProfile?.main_objective ?? "",
@@ -77,8 +82,11 @@ export default function OnboardingWizard({
     if (form.full_name.trim().length < 2) return "Nome é obrigatório.";
     if (form.role.trim().length < 2) return "Cargo é obrigatório.";
     if (form.area.trim().length < 2) return "Área é obrigatória.";
-    if (form.target_audience.trim().length < 20)
-      return "Descreve sua audiência em pelo menos uma frase completa.";
+    if (
+      !form.audience_segments.length &&
+      form.target_audience.trim().length < 20
+    )
+      return "Escolhe ao menos um segmento OU descreve sua audiência em uma frase.";
     if (!form.tone_traits.length) return "Escolha ao menos 1 traço de tom.";
     if (form.main_objective.trim().length < 20)
       return "Descreve seu objetivo em pelo menos uma frase.";
@@ -264,12 +272,64 @@ export default function OnboardingWizard({
           <Section title="Pra quem você fala — e por quê">
             <div className="grid gap-4">
               <div>
-                <Label htmlFor="target_audience">Audiência-alvo</Label>
+                <Label>Pra quem você escreve (marque um ou mais)</Label>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Escolha segmentos prontos pra acelerar. Se nenhum encaixa
+                  bem, deixa em branco e descreve no campo livre abaixo.
+                </p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {AUDIENCE_SEGMENTS.map((seg) => {
+                    const active = form.audience_segments.includes(seg.key);
+                    return (
+                      <button
+                        key={seg.key}
+                        type="button"
+                        onClick={() =>
+                          setForm((prev) => ({
+                            ...prev,
+                            audience_segments: active
+                              ? prev.audience_segments.filter(
+                                  (k) => k !== seg.key
+                                )
+                              : [...prev.audience_segments, seg.key],
+                          }))
+                        }
+                        className={`rounded-xl border p-3 text-left text-xs transition-colors ${
+                          active
+                            ? "border-brand-500 bg-brand-50"
+                            : "border-border bg-card hover:bg-secondary"
+                        }`}
+                      >
+                        <p
+                          className={`font-medium ${
+                            active ? "text-brand-900" : "text-foreground"
+                          }`}
+                        >
+                          {seg.label}
+                        </p>
+                        <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
+                          {seg.description}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="target_audience">
+                  Refinamento livre (opcional)
+                </Label>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Use pra adicionar recorte de porte, dor específica ou
+                  audiência fora da lista.
+                </p>
                 <Textarea
                   id="target_audience"
                   value={form.target_audience}
-                  onChange={(e) => setForm({ ...form, target_audience: e.target.value })}
-                  placeholder="Ex: Heads de finanças e operações de empresas brasileiras 500+ que ainda tratam viagem corporativa como custo, não como dado."
+                  onChange={(e) =>
+                    setForm({ ...form, target_audience: e.target.value })
+                  }
+                  placeholder="Ex: Heads de finanças e operações de empresas brasileiras 500+ que ainda tratam viagem corporativa como custo."
                   rows={3}
                   className="mt-2"
                 />

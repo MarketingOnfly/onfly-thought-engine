@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { createSupabaseServerClient, getServerUser } from "@/lib/supabase/server";
+import { getLinkedInConfigStatus } from "@/lib/linkedin/client";
 import type { LinkedInConnection, PostMetric } from "@/lib/db/types";
 import AnalyticsView from "./view";
 
@@ -13,6 +14,7 @@ export default async function AnalyticsPage({
   const supabase = await createSupabaseServerClient();
 
   const params = await searchParams;
+  const config = getLinkedInConfigStatus();
 
   const [connRes, metricsRes] = await Promise.all([
     supabase
@@ -55,6 +57,7 @@ export default async function AnalyticsPage({
           connected: params.connected === "1",
           error: params.error ?? null,
         }}
+        linkedinConfig={config}
       />
     </div>
   );

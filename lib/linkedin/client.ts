@@ -34,6 +34,22 @@ function creds(): OAuthCreds {
   return { clientId, clientSecret, redirectUri };
 }
 
+/**
+ * Server-side: retorna se LinkedIn OAuth está configurado e quais vars
+ * faltam. Não throwa — usado pra renderizar a UI defensivamente, sem
+ * deixar o líder clicar num botão que vai falhar.
+ */
+export function getLinkedInConfigStatus(): {
+  configured: boolean;
+  missing: string[];
+} {
+  const missing: string[] = [];
+  if (!process.env.LINKEDIN_CLIENT_ID) missing.push("LINKEDIN_CLIENT_ID");
+  if (!process.env.LINKEDIN_CLIENT_SECRET) missing.push("LINKEDIN_CLIENT_SECRET");
+  if (!process.env.LINKEDIN_REDIRECT_URI) missing.push("LINKEDIN_REDIRECT_URI");
+  return { configured: missing.length === 0, missing };
+}
+
 export function buildAuthUrl(state: string): string {
   const { clientId, redirectUri } = creds();
   const params = new URLSearchParams({
