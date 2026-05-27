@@ -100,23 +100,53 @@ export async function POST(
     .eq("id", id);
 
   // Pre-create placeholder campaign_drafts (pending) for visibility.
-  for (const leader of leaders) {
-    await supabase
-      .from("campaign_drafts")
-      .upsert(
-        {
-          campaign_id: campaign.id,
-          user_id: leader.user_id,
-          status: "pending",
-        },
-        { onConflict: "campaign_id,user_id" }
-      );
-  }
+  // Limpa error_message + draft_id pra dispatches anteriores que falharam
+  // virem do zero. Batch upsert pra evitar N round-trips.
+  await supabase.from("campaign_drafts").upsert(
+    leaders.map((leader) => ({
+      campaign_id: campaign.id,
+      user_id: leader.user_id,
+      status: "pending" as const,
+      error_message: null,
+      draft_id: null,
+    })),
+    { onConflict: "campaign_id,user_id" }
+  );
 
   const anthropic = getAnthropic();
   const results: { leader_id: string; status: string; error?: string }[] = [];
 
-  for (const leader of leaders) {
+  // Paraleliza em chunks de 4 — Anthropic Sonnet aguenta esse fan-out
+  // tranquilo, e mantém o dispatch dentro do maxDuration=300s mesmo
+  // com 20-30 líderes. Sem isso o loop serial estourava no Vercel.
+  const CHUNK_SIZE = 4;
+  const chunks: typeof leaders[] = [];
+  for (let i = 0; i < leaders.length; i += CHUNK_SIZE) {
+    chunks.push(leaders.slice(i, i + CHUNK_SIZE));
+  }
+
+  for (const chunk of chunks) {
+    const chunkResults = await Promise.allSettled(
+      chunk.map((leader) => dispatchOneLeader(leader))
+    );
+    chunkResults.forEach((r, i) => {
+      if (r.status === "fulfilled") {
+        results.push(r.value);
+      } else {
+        results.push({
+          leader_id: chunk[i].user_id,
+          status: "failed",
+          error: r.reason instanceof Error ? r.reason.message : "unknown",
+        });
+      }
+    });
+  }
+
+  // Função interna que processa 1 líder — mantém o mesmo escopo de
+  // variáveis (supabase, anthropic, campaign, etc.).
+  async function dispatchOneLeader(
+    leader: Pick<LeaderProfile, "user_id" | "full_name" | "role" | "area">
+  ): Promise<{ leader_id: string; status: string; error?: string }> {
     try {
       await supabase
         .from("campaign_drafts")
@@ -131,12 +161,11 @@ export async function POST(
           .update({ status: "failed", error_message: "leader profile missing" })
           .eq("campaign_id", campaign.id)
           .eq("user_id", leader.user_id);
-        results.push({
+        return {
           leader_id: leader.user_id,
           status: "failed",
           error: "profile missing",
-        });
-        continue;
+        };
       }
 
       const system = buildLeaderSystemPrompt(ctx);
@@ -208,12 +237,11 @@ export async function POST(
           .update({ status: "failed", error_message: draftErr?.message ?? "insert failed" })
           .eq("campaign_id", campaign.id)
           .eq("user_id", leader.user_id);
-        results.push({
+        return {
           leader_id: leader.user_id,
           status: "failed",
           error: draftErr?.message ?? "insert",
-        });
-        continue;
+        };
       }
 
       await supabase
@@ -231,7 +259,7 @@ export async function POST(
         link: `/dashboard/content/${draftData.id}`,
       });
 
-      results.push({ leader_id: leader.user_id, status: "ready" });
+      return { leader_id: leader.user_id, status: "ready" };
     } catch (err) {
       const msg = err instanceof Error ? err.message : "unknown";
       await supabase
@@ -239,7 +267,7 @@ export async function POST(
         .update({ status: "failed", error_message: msg })
         .eq("campaign_id", campaign.id)
         .eq("user_id", leader.user_id);
-      results.push({ leader_id: leader.user_id, status: "failed", error: msg });
+      return { leader_id: leader.user_id, status: "failed", error: msg };
     }
   }
 

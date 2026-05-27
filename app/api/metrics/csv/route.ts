@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, after, type NextRequest } from "next/server";
 import {
   createSupabaseAdminClient,
   createSupabaseServerClient,
@@ -581,9 +581,15 @@ export async function POST(request: NextRequest) {
 
   // Aprendizado automático em background — pega posts de alto desempenho
   // (impressões > 2x a média do líder) e extrai padrões pra learned_preferences.
-  void learnFromHighPerformers(user.id).catch((err) =>
-    console.error("[metrics] auto-learn failed", err)
-  );
+  // Usa after() pra garantir execução pós-resposta em serverless (sem isso
+  // o trabalho era abortado e o aprendizado nunca rodava em prod).
+  after(async () => {
+    try {
+      await learnFromHighPerformers(user.id);
+    } catch (err) {
+      console.error("[metrics] auto-learn failed", err);
+    }
+  });
 
   return NextResponse.json({
     inserted: data?.length ?? 0,

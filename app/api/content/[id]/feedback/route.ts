@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, after, type NextRequest } from "next/server";
 import { createSupabaseServerClient, getServerUser } from "@/lib/supabase/server";
 import { learnFromFeedback } from "@/lib/anthropic/learn-from-feedback";
 
@@ -88,10 +88,16 @@ export async function POST(
     return NextResponse.json({ error: upErr.message }, { status: 500 });
   }
 
-  // Retroalimentação assíncrona. Não bloqueia a resposta — UI mostra
-  // "salvo" imediato, e o aprendizado roda em background.
-  void recomputeLearnedPreferences(user.id).catch((err) => {
-    console.error("[feedback] learn error", err);
+  // Retroalimentação assíncrona via after() — em serverless (Vercel),
+  // `void fn()` é abortado quando a resposta retorna. `after()` garante
+  // que o trabalho continua executando depois do response sent.
+  // Sem isso, o aprendizado some silenciosamente em prod.
+  after(async () => {
+    try {
+      await recomputeLearnedPreferences(user.id);
+    } catch (err) {
+      console.error("[feedback] learn error", err);
+    }
   });
 
   return NextResponse.json({ feedback: upserted });
