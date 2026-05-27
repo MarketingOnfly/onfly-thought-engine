@@ -94,7 +94,7 @@ const ARCHETYPES: {
   },
 ];
 
-type PageTab = "content" | "versions" | "feedback" | "visuals" | "asks";
+type PageTab = "content" | "versions" | "visuals" | "asks";
 
 interface ReviewMeta {
   voice_match_score?: number;
@@ -380,7 +380,6 @@ export default function ContentEditor({
                   icon: History,
                   count: undefined,
                 },
-                { key: "feedback", label: "Feedback", icon: MessageSquare },
                 {
                   key: "visuals",
                   label: "Infográfico",
@@ -722,6 +721,8 @@ export default function ContentEditor({
                 )}
               </div>
 
+              {/* CARD 4 — Feedback (sempre visível, retroalimenta o motor) */}
+              {display && <FeedbackPanel draftId={draft.id} />}
             </>
           )}
         </aside>
@@ -741,12 +742,6 @@ export default function ContentEditor({
               setPageTab("content");
             }}
           />
-        </section>
-      )}
-
-      {display && !editing && !focusMode && pageTab === "feedback" && (
-        <section className="mt-6 max-w-2xl">
-          <FeedbackPanel draftId={draft.id} />
         </section>
       )}
 

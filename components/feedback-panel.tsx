@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, Loader2, Sparkles, Star } from "lucide-react";
+import { Check, Loader2, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -67,16 +67,50 @@ export function FeedbackPanel({ draftId }: { draftId: string }) {
   }
 
   const display = hover ?? rating ?? 0;
+  const hasFeedback = !!existing;
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-      <div className="flex items-center gap-2">
-        <Sparkles className="h-4 w-4 text-brand-600" />
-        <h3 className="text-sm font-medium">Como ficou esse texto?</h3>
+    <div
+      className={cn(
+        "rounded-2xl border bg-card p-5 shadow-sm transition-colors",
+        // sem feedback ainda → destaca em amber pra pedir atenção;
+        // já tem feedback → volta pra brand-200 (info, não-call-to-action)
+        hasFeedback
+          ? "border-brand-200"
+          : "border-amber-300 bg-amber-50/30"
+      )}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span
+            className={cn(
+              "inline-flex h-8 w-8 items-center justify-center rounded-xl",
+              hasFeedback
+                ? "bg-brand-50 text-brand-700"
+                : "bg-amber-100 text-amber-700"
+            )}
+          >
+            <Star
+              className={cn(
+                "h-4 w-4",
+                hasFeedback && "fill-current"
+              )}
+            />
+          </span>
+          <div>
+            <h3 className="text-sm font-semibold">Como ficou esse texto?</h3>
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              {hasFeedback ? "Feedback enviado" : "1 minuto · vira aprendizado"}
+            </p>
+          </div>
+        </div>
+        {hasFeedback && (
+          <Check className="h-4 w-4 shrink-0 text-brand-600" />
+        )}
       </div>
-      <p className="mt-1 text-xs text-muted-foreground">
-        Sua nota e comentário viram aprendizado pro motor — ele lembra disso na
-        próxima geração.
+      <p className="mt-2 text-xs text-muted-foreground">
+        Sua nota vira aprendizado pro motor — ele lembra disso na próxima
+        geração.
       </p>
 
       {loading ? (
