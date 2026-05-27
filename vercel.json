@@ -10,6 +10,8 @@
     "app/api/admin/campaigns/[id]/dispatch/route.ts": { "maxDuration": 300 },
     "app/api/admin/campaigns/[id]/attachments/route.ts": { "maxDuration": 60 },
     "app/api/documents/upload/route.ts": { "maxDuration": 60 },
-    "app/api/metrics/csv/route.ts": { "maxDuration": 60 }
+    "app/api/metrics/csv/route.ts": { "maxDuration": 60 },
+    "app/api/context/extract/route.ts": { "maxDuration": 60 },
+    "app/api/context/suggest-angles/route.ts": { "maxDuration": 60 }
   }
 }

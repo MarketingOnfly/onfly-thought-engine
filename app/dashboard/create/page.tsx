@@ -6,7 +6,14 @@ import { createSupabaseServerClient, getServerUser } from "@/lib/supabase/server
 export default async function CreatePage({
   searchParams,
 }: {
-  searchParams: Promise<{ topic?: string; angle?: string; format?: string }>;
+  searchParams: Promise<{
+    topic?: string;
+    angle?: string;
+    format?: string;
+    why_now?: string;
+    source_url?: string;
+    source_title?: string;
+  }>;
 }) {
   const user = (await getServerUser())!;
   const supabase = await createSupabaseServerClient();
@@ -38,6 +45,15 @@ export default async function CreatePage({
         prefillBrief={params.angle}
         prefillFormat={
           params.format === "article" ? "article" : "linkedin_post"
+        }
+        prefillSource={
+          params.source_url
+            ? {
+                url: params.source_url,
+                title: params.source_title ?? params.source_url,
+                why_now: params.why_now ?? null,
+              }
+            : null
         }
         defaultObjective={profile?.objectives?.[0] ?? null}
         defaultHookStyle={profile?.preferred_hook_styles?.[0] ?? null}

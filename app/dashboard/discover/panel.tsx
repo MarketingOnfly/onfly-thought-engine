@@ -101,6 +101,9 @@ export default function DiscoverPanel({
       angle: idea.angle,
       format,
     });
+    if (idea.why_now) params.set("why_now", idea.why_now);
+    if (idea.source_url) params.set("source_url", idea.source_url);
+    if (idea.source_title) params.set("source_title", idea.source_title);
     router.push(`/dashboard/create?${params.toString()}`);
   }
 

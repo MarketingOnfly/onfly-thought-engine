@@ -8,6 +8,7 @@ import {
   ChevronDown,
   FileText,
   Linkedin,
+  Paperclip,
   Sliders,
   Sparkles,
   Wand2,
@@ -18,6 +19,12 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { apiFetch } from "@/lib/client-fetch";
 import { CardSingleSelect, ChipMultiSelect } from "@/components/preset-picker";
+import {
+  ContextAttachments,
+  attachmentsToPromptBlock,
+  type Attachment,
+  type AngleSuggestion,
+} from "@/components/context-attachments";
 import {
   CONTENT_LENGTHS,
   CONTENT_TYPES,
@@ -37,6 +44,7 @@ export default function CreateForm({
   prefillTopic,
   prefillBrief,
   prefillFormat,
+  prefillSource,
   defaultObjective,
   defaultHookStyle,
   defaultContentType,
@@ -46,6 +54,7 @@ export default function CreateForm({
   prefillTopic?: string;
   prefillBrief?: string;
   prefillFormat?: Format;
+  prefillSource?: { url: string; title: string; why_now: string | null } | null;
   defaultObjective: string | null;
   defaultHookStyle: string | null;
   defaultContentType: string | null;
@@ -53,7 +62,17 @@ export default function CreateForm({
 }) {
   const router = useRouter();
   const [format, setFormat] = useState<Format>(prefillFormat ?? "linkedin_post");
-  const [idea, setIdea] = useState(prefillTopic ?? prefillBrief ?? "");
+  const [idea, setIdea] = useState(() => {
+    const base = prefillTopic ?? prefillBrief ?? "";
+    if (prefillSource?.why_now && base) {
+      return `${base}\n\nPor que agora: ${prefillSource.why_now}`;
+    }
+    return base;
+  });
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [attachmentsOpen, setAttachmentsOpen] = useState(
+    !!prefillSource || false
+  );
   const [length, setLength] = useState<LengthKey>("short"); // default Curto — direto ao usuário "esse conteúdo está longo"
   const [objective, setObjective] = useState<string | null>(defaultObjective);
   const [hookStyle, setHookStyle] = useState<string | null>(defaultHookStyle);
@@ -74,6 +93,71 @@ export default function CreateForm({
   } | null>(null);
 
   const ideaReady = idea.trim().length >= 8;
+
+  // Quando vem do discovery: adiciona o source como anexo e extrai
+  // automaticamente. Roda 1x no mount.
+  useEffect(() => {
+    if (!prefillSource) return;
+    const id = crypto.randomUUID();
+    const seedAttachment: Attachment = {
+      id,
+      kind: "discovery",
+      title: prefillSource.title,
+      url: prefillSource.url,
+      text: "",
+      truncated: false,
+      status: "fetching",
+    };
+    setAttachments([seedAttachment]);
+    // Tenta extrair o conteúdo da fonte original
+    (async () => {
+      try {
+        const res = await fetch("/api/context/extract", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ kind: "news", url: prefillSource.url }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setAttachments((prev) =>
+            prev.map((a) =>
+              a.id === id
+                ? { ...a, status: "error", error: data.error ?? "Falhou" }
+                : a
+            )
+          );
+          return;
+        }
+        setAttachments((prev) =>
+          prev.map((a) =>
+            a.id === id
+              ? {
+                  ...a,
+                  status: "ready",
+                  kind: "discovery",
+                  title: data.title || prefillSource.title,
+                  text: data.text,
+                  truncated: data.truncated,
+                }
+              : a
+          )
+        );
+      } catch (err) {
+        setAttachments((prev) =>
+          prev.map((a) =>
+            a.id === id
+              ? {
+                  ...a,
+                  status: "error",
+                  error: err instanceof Error ? err.message : "Erro",
+                }
+              : a
+          )
+        );
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Detecta assunto similar a posts dos últimos 30 dias (debounce 600ms)
   useEffect(() => {
@@ -113,13 +197,19 @@ export default function CreateForm({
       brief = text.slice(80).trim() || null;
     }
 
+    // Empacota anexos como bloco de contexto pra prompt
+    const contextBlock = attachmentsToPromptBlock(attachments);
+    const extraCombined = [extra.trim() || null, contextBlock || null]
+      .filter(Boolean)
+      .join("\n\n---\n\n");
+
     const res = await apiFetch<{ draft: ContentDraft }>("/api/content/generate", {
       method: "POST",
       body: JSON.stringify({
         format,
         topic,
         brief,
-        extra_instructions: extra.trim() || null,
+        extra_instructions: extraCombined || null,
         hook_style: hookStyle,
         objective,
         content_type: contentType,
@@ -155,9 +245,16 @@ export default function CreateForm({
       <div className="space-y-5">
         {/* TEMA */}
         <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-          <Label htmlFor="idea" className="text-base font-medium">
-            Sobre o que você quer escrever?
-          </Label>
+          <div className="flex flex-wrap items-center gap-2">
+            <Label htmlFor="idea" className="text-base font-medium">
+              Sobre o que você quer escrever?
+            </Label>
+            {prefillSource && (
+              <Badge variant="brand" className="text-[10px]">
+                <Sparkles className="h-3 w-3" /> vindo do discovery
+              </Badge>
+            )}
+          </div>
           <Textarea
             id="idea"
             value={idea}
@@ -170,6 +267,66 @@ export default function CreateForm({
           <p className="mt-2 text-xs text-muted-foreground">
             A primeira linha vira o tema. O resto serve de briefing.
           </p>
+        </section>
+
+        {/* MATERIAL DE APOIO — anexos */}
+        <section className="rounded-2xl border border-border bg-card shadow-sm">
+          <button
+            type="button"
+            onClick={() => setAttachmentsOpen((v) => !v)}
+            className="flex w-full items-center justify-between gap-3 px-6 py-4 text-left transition hover:bg-secondary/30"
+            aria-expanded={attachmentsOpen}
+          >
+            <div className="flex items-center gap-3">
+              <Paperclip className="h-4 w-4 text-brand-600" />
+              <div>
+                <p className="text-sm font-medium">
+                  Material de apoio (opcional)
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Vídeo do YouTube, notícia ou PDF. O motor usa como
+                  matéria-prima e pode sugerir ângulos.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {attachments.length > 0 && (
+                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-100 px-1.5 text-[10px] font-medium text-brand-700">
+                  {attachments.length}
+                </span>
+              )}
+              <ChevronDown
+                className={cn(
+                  "h-4 w-4 text-muted-foreground transition-transform",
+                  attachmentsOpen && "rotate-180"
+                )}
+              />
+            </div>
+          </button>
+
+          {attachmentsOpen && (
+            <div className="border-t border-border px-6 py-5">
+              <ContextAttachments
+                attachments={attachments}
+                onAdd={(a) => setAttachments((prev) => [...prev, a])}
+                onUpdate={(id, patch) =>
+                  setAttachments((prev) =>
+                    prev.map((a) => (a.id === id ? { ...a, ...patch } : a))
+                  )
+                }
+                onRemove={(id) =>
+                  setAttachments((prev) => prev.filter((a) => a.id !== id))
+                }
+                onPickAngle={(angle: AngleSuggestion) => {
+                  setIdea(`${angle.label}\n\n${angle.summary}`);
+                  // garante que o usuário veja onde foi parar
+                  document
+                    .getElementById("idea")
+                    ?.scrollIntoView({ behavior: "smooth", block: "center" });
+                }}
+              />
+            </div>
+          )}
         </section>
 
         {/* FORMATO + TAMANHO — sempre visível, o que mais importa */}
