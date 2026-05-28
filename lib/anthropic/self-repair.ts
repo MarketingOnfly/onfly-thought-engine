@@ -11,6 +11,7 @@
 
 import { getAnthropic, FAST_MODEL } from "@/lib/anthropic/client";
 import type { ReviewIssue } from "@/lib/anthropic/review";
+import { applyHardRules } from "@/lib/anthropic/polish-pass";
 
 const SYSTEM_PROMPT = `Você é um editor cirúrgico. Recebe um draft em pt-BR + uma lista de issues que um revisor anti-IA já identificou no próprio texto. Sua tarefa: corrigir EXATAMENTE essas issues, nada mais.
 
@@ -76,8 +77,10 @@ export async function selfRepair(opts: {
     .join("\n")
     .trim();
 
-  return text
+  const cleaned = text
     .replace(/^```(?:markdown|md)?\s*\n?/i, "")
     .replace(/\n?```\s*$/i, "")
     .trim();
+
+  return applyHardRules(cleaned);
 }

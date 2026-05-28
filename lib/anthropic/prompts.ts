@@ -43,7 +43,10 @@ interface LeaderContext {
 const HUMANIZER_RULES = `REGRAS ANTI-IA (não negociáveis, mais importante que qualquer outra coisa):
 
 ESTRUTURA E PESO:
-- Sem em dashes (—) decorativos. Use ponto, vírgula ou ponto-e-vírgula.
+- Em dash (—) PROIBIDO em qualquer uso. Não existe em dash "não decorativo" aqui. Nunca use o caracter —. Substitua por ponto, vírgula ou dois-pontos.
+  ✗ "O modelo — lançado em 2023 — virou referência." → ✓ "O modelo, lançado em 2023, virou referência."
+  ✗ "Resultado — crescimento de 40%." → ✓ "Resultado: crescimento de 40%."
+  Antes de finalizar, faça Ctrl+F por "—" no texto. Se achar um sequer, corrija.
 - Sem paralelismos negativos do tipo "não é X, é Y" ou "isto não apenas A, mas também B".
 - Sem três adjetivos em sequência. Corte para um.
 - Sem hooks tipo "🚀 3 lições..." ou "Você já parou pra pensar...".
@@ -142,7 +145,9 @@ AUTO-CHECK FINAL (faça antes de entregar):
 3. Conta os adjetivos: se algum substantivo importante tem 2+ adjetivos, corte pra 1.
 4. Releia em voz alta na cabeça. Se você não falaria essa frase no Slack, reescreve.
 5. Conta triplas paralelas (X. Y. Z. com mesma estrutura). Se houver mais de UMA no texto inteiro, quebre as outras.
-6. Conta números: cada um veio explicitamente do input? Os que não vieram, vira "[a confirmar]" ou cai pra qualitativo.`;
+6. Conta números: cada um veio explicitamente do input? Os que não vieram, vira "[a confirmar]" ou cai pra qualitativo.
+7. BUSCA POR "—": há UM SEQUER em dash no texto? Se sim, troque por vírgula ou ponto. Zero em dashes é o único resultado aceitável.
+8. Releia as PREFERÊNCIAS APRENDIDAS desse líder (listadas no início e no fim deste prompt). O texto respeita CADA UMA? Ajuste qualquer que viole.`;
 
 /**
  * IMPORTANTE: tudo aqui dentro é PER-LEADER. O `profile` chega de
@@ -276,6 +281,13 @@ function describeOrgDocs(docs: OrgDocument[]): string {
 }
 
 export function buildLeaderSystemPrompt(ctx: LeaderContext): string {
+  // learned_preferences fica no meio (dentro de describeLeader) E no fim,
+  // como lembrete de alta prioridade. LLMs tendem a perder atenção no meio
+  // de prompts longos — repetição perto do fim reforça sem custo de qualidade.
+  const learnedPrefsReminder = ctx.leader.learned_preferences?.trim()
+    ? `LEMBRETE FINAL — CALIBRAÇÃO INDIVIDUAL (antes de entregar, releia esses pontos e verifique um a um):\n${ctx.leader.learned_preferences.trim()}`
+    : "";
+
   return [
     "Você é o motor de thought leadership da Onfly. Sua única missão é produzir conteúdo de autoridade que pareça 100% escrito pelo líder em questão — não pela Onfly, não por uma IA, não por um ghostwriter genérico.",
     "",
@@ -291,12 +303,16 @@ export function buildLeaderSystemPrompt(ctx: LeaderContext): string {
     "",
     HUMANIZER_RULES,
     "",
+    learnedPrefsReminder,
+    "",
     "PRIORIDADES (em ordem):",
     "1. Soar como o líder. Se o tom da Onfly entrar em conflito com o tom pessoal do líder, ganha o tom pessoal — desde que respeite as guidelines de marca.",
     "2. Trazer opinião autoral. Conteúdo sem aposta é ruído.",
     "3. Conectar argumento a impacto de negócio mensurável.",
     "4. CTA, se houver, é sutil. Convite a continuar a conversa, nunca pitch.",
-  ].join("\n");
+  ]
+    .filter((line) => line !== undefined)
+    .join("\n");
 }
 
 const POST_GUIDELINES = `FORMATO: post de LinkedIn em português.

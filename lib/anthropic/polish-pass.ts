@@ -6,9 +6,51 @@
  *  3. Test sensorial — garantir 2+ imagens concretas
  *
  * Usa Sonnet (rápido + bom em editing).
+ *
+ * IMPORTANTE: `applyHardRules()` roda DEPOIS de qualquer resposta LLM,
+ * de forma determinística (regex). Não depende do modelo seguir instrução.
+ * Toda saída de texto gerado/revisado deve passar por essa função.
  */
 
 import { getAnthropic, FAST_MODEL } from "@/lib/anthropic/client";
+
+/**
+ * Filtros determinísticos que o LLM às vezes ignora mesmo com instrução explícita.
+ * Aplicados DEPOIS da resposta do modelo — são operações de string, não IA.
+ * Exportado pra ser usado em todos os endpoints que devolvem texto gerado.
+ */
+export function applyHardRules(text: string): string {
+  let result = text;
+
+  // ─── EM DASH (—) PROIBIDO ──────────────────────────────────────────────────
+  // O caracter U+2014 não deve aparecer em NENHUM contexto no output.
+  // Substituição em cascata do mais específico pro mais geral.
+
+  // 1. "palavra — palavra" (espaço-emdash-espaço) → vírgula
+  result = result.replace(/ — /g, ", ");
+
+  // 2. "frase —\n" ou "frase —" no final → ponto
+  result = result.replace(/ —(\n|$)/gm, ".$1");
+
+  // 3. "^— item" no início de linha (bullet mal-feito) → "→ item"
+  result = result.replace(/^—(?=\s)/gm, "→");
+
+  // 4. "palavra—palavra" (sem espaço) → "palavra, palavra"
+  result = result.replace(/(\p{L})—(\p{L})/gu, "$1, $2");
+
+  // 5. Qualquer em dash remanescente → vírgula
+  result = result.replace(/—/g, ", ");
+
+  // ─── LIMPEZA PÓS-SUBSTITUIÇÃO ─────────────────────────────────────────────
+  // Vírgulas duplicadas que podem surgir ex: ", ,"
+  result = result.replace(/, ,/g, ",");
+  // Espaços duplos
+  result = result.replace(/  +/g, " ");
+  // Espaço antes de vírgula ou ponto (ex: "palavra ,")
+  result = result.replace(/ ([,.])/g, "$1");
+
+  return result.trim();
+}
 
 const PT_BR_CLICHES = [
   "no fim do dia",
@@ -60,6 +102,12 @@ QUATRO operações OBRIGATÓRIAS, nessa ordem:
 
 [LISTA DE CLICHÊS pt-BR:
 ${PT_BR_CLICHES.map((c) => `  - "${c}"`).join("\n")}]
+
+REGRA ABSOLUTA DE PONTUAÇÃO — ANTES DE TUDO:
+- Em dash (—, U+2014) é PROIBIDO. Substitua SEMPRE: vírgula, ponto ou ponto-e-vírgula.
+  ✗ "O sistema — criado em 2023 — mudou tudo." → ✓ "O sistema, criado em 2023, mudou tudo."
+  ✗ "Resultado — crescimento rápido." → ✓ "Resultado: crescimento rápido."
+  Procure TODOS os "—" no texto e elimine-os um a um antes de continuar.
 
 Outros tells de IA pra cortar (lista do skill /humanizer):
 - Adjetivos vagos em série (3+ adjetivos seguidos) — escolha UM ou troque por dado concreto
@@ -138,8 +186,11 @@ Devolva o texto polido apenas.`;
     .trim();
 
   // Remove markdown fences que o modelo às vezes adiciona
-  return text
+  const cleaned = text
     .replace(/^```(?:markdown|md)?\s*\n?/i, "")
     .replace(/\n?```\s*$/i, "")
     .trim();
+
+  // Aplica filtros determinísticos (ex: em dash) independente do LLM
+  return applyHardRules(cleaned);
 }

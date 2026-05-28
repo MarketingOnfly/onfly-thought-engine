@@ -7,6 +7,7 @@ import {
   buildReviseUserPrompt,
 } from "@/lib/anthropic/prompts";
 import { reviseContentSchema } from "@/lib/validation";
+import { applyHardRules } from "@/lib/anthropic/polish-pass";
 import type { ContentDraft } from "@/lib/db/types";
 
 export const maxDuration = 60;
@@ -68,11 +69,14 @@ export async function POST(request: NextRequest) {
       messages: [{ role: "user", content: userPrompt }],
     });
 
-    const text = response.content
+    const rawText = response.content
       .filter((b) => b.type === "text")
       .map((b) => (b as { text: string }).text)
       .join("\n")
       .trim();
+
+    // Aplica filtros determinísticos (ex: em dash) independente do LLM
+    const text = applyHardRules(rawText);
 
     const meta = (draft.meta as Record<string, unknown>) ?? {};
     const revisions = Array.isArray(meta.revisions) ? meta.revisions : [];
