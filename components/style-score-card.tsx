@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { StyleScore } from "@/lib/db/types";
+import type { StyleScore, StyleScoreDimensions } from "@/lib/db/types";
 
 interface UseStyleScoreOpts {
   draftId: string;
@@ -259,8 +259,8 @@ export function StyleScoreDetails({
     );
   }
   if (!score) return null;
-  const { matches, gaps } = score;
-  if (matches.length === 0 && gaps.length === 0) return null;
+  const { matches, gaps, dimensions } = score;
+  if (matches.length === 0 && gaps.length === 0 && !dimensions) return null;
 
   return (
     <div>
@@ -270,6 +270,8 @@ export function StyleScoreDetails({
           Sugestões de aderência ao seu estilo
         </h3>
       </div>
+
+      {dimensions && <DimensionsBreakdown dimensions={dimensions} />}
       <p className="mt-1 text-xs text-muted-foreground">
         Análise contra seu tom, padrões aprendidos e regras de NUNCA escreveria.
       </p>
@@ -377,7 +379,110 @@ function buildRefineInstructions(matches: string[], gaps: string[]): string {
     );
   }
   parts.push(
-    "Mantém o tema central e o tamanho aproximado. Não reescreve do zero — ajusta cirurgicamente as partes que escaparam."
+    "Mantém o tema central e o tamanho aproximado. Não reescreve do zero, ajusta cirurgicamente as partes que escaparam."
   );
   return parts.join("\n\n");
+}
+
+/**
+ * Mostra a decomposição da nota em 5 dimensões.
+ * Cada dimensão vai de 0 a 20. Ajuda o líder a entender ONDE a aderência
+ * está alta vs baixa, em vez de só ver um número global que parece arbitrário.
+ */
+function DimensionsBreakdown({ dimensions }: { dimensions: StyleScoreDimensions }) {
+  const rows: Array<{
+    key: string;
+    label: string;
+    score: number;
+    max: number;
+    notes: string;
+  }> = [
+    {
+      key: "anti_ai_tells",
+      label: "Sem cara de IA",
+      score: dimensions.anti_ai_tells.score,
+      max: dimensions.anti_ai_tells.max,
+      notes:
+        dimensions.anti_ai_tells.deductions.join(" · ") ||
+        "Zero em dash, contraposição, banned vocab ou emoji.",
+    },
+    {
+      key: "voice_match",
+      label: "Voz do líder",
+      score: dimensions.voice_match.score,
+      max: dimensions.voice_match.max,
+      notes: dimensions.voice_match.notes || "—",
+    },
+    {
+      key: "structure",
+      label: "Estrutura LinkedIn",
+      score: dimensions.structure.score,
+      max: dimensions.structure.max,
+      notes:
+        dimensions.structure.notes.join(" · ") ||
+        [
+          dimensions.structure.hook_works ? "hook ok" : null,
+          dimensions.structure.has_anchor ? "âncora ok" : null,
+          dimensions.structure.has_isolated_line ? "frase-âncora ok" : null,
+          dimensions.structure.dry_close ? "close seco" : null,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+    },
+    {
+      key: "substance",
+      label: "Substância",
+      score: dimensions.substance.score,
+      max: dimensions.substance.max,
+      notes: dimensions.substance.notes || "—",
+    },
+    {
+      key: "learned_match",
+      label: "Preferências aprendidas",
+      score: dimensions.learned_match.score,
+      max: dimensions.learned_match.max,
+      notes: dimensions.learned_match.notes || "—",
+    },
+  ];
+
+  return (
+    <div className="mt-4 space-y-2.5 rounded-2xl border border-border bg-secondary/30 p-4">
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+        Matriz de pontuação (0-20 por dimensão)
+      </p>
+      <div className="space-y-2">
+        {rows.map((r) => {
+          const pct = (r.score / r.max) * 100;
+          const tone =
+            pct >= 80
+              ? "bg-brand-500"
+              : pct >= 55
+                ? "bg-amber-500"
+                : "bg-destructive";
+          return (
+            <div key={r.key}>
+              <div className="flex items-baseline justify-between gap-2 text-xs">
+                <span className="font-medium text-foreground">{r.label}</span>
+                <span className="font-mono text-muted-foreground">
+                  {r.score}
+                  <span className="text-foreground/40">/{r.max}</span>
+                </span>
+              </div>
+              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-secondary">
+                <div
+                  className={cn("h-full transition-all", tone)}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              {r.notes && (
+                <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
+                  {r.notes}
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }

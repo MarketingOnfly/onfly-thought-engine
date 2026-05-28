@@ -61,10 +61,28 @@ export interface AltVersion {
   generated_at: string;
 }
 
+export interface StyleScoreDimensions {
+  anti_ai_tells: { score: number; max: 20; deductions: string[] };
+  voice_match: { score: number; max: 20; notes: string };
+  structure: {
+    score: number;
+    max: 20;
+    hook_works: boolean;
+    has_anchor: boolean;
+    has_isolated_line: boolean;
+    dry_close: boolean;
+    notes: string[];
+  };
+  substance: { score: number; max: 20; notes: string };
+  learned_match: { score: number; max: 20; notes: string };
+}
+
 export interface StyleScore {
-  overall: number; // 0-100
+  overall: number; // 0-100 (soma das 5 dimensões)
   matches: string[]; // bullets do que casou
   gaps: string[]; // bullets do que escapou
+  // dimensions é opcional pra retrocompat com scores salvos antes da v2
+  dimensions?: StyleScoreDimensions;
   computed_at: string;
 }
 
