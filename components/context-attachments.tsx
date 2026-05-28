@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import {
+  ClipboardPaste,
   FileText,
   Link2,
   Loader2,
@@ -80,6 +81,12 @@ export function ContextAttachments({
   const [angles, setAngles] = useState<AngleSuggestion[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Snippet form (colar trecho direto — resolve LinkedIn/paywall)
+  const [snippetOpen, setSnippetOpen] = useState(false);
+  const [snippetTitle, setSnippetTitle] = useState("");
+  const [snippetText, setSnippetText] = useState("");
+  const [snippetSourceUrl, setSnippetSourceUrl] = useState("");
+
   const readyCount = attachments.filter((a) => a.status === "ready").length;
 
   async function addUrl() {
@@ -129,6 +136,63 @@ export function ContextAttachments({
       });
     } finally {
       setAdding(false);
+    }
+  }
+
+  /**
+   * Adiciona um trecho colado direto. Resolve LinkedIn (que web_search
+   * não lê bem) ou qualquer paywall total. Cara mais cola o texto.
+   */
+  async function addSnippet(opts: {
+    title: string;
+    text: string;
+    sourceUrl?: string | null;
+  }) {
+    if (opts.text.trim().length < 20) {
+      setError("O trecho precisa ter pelo menos 20 caracteres.");
+      return;
+    }
+    setError(null);
+    const id = crypto.randomUUID();
+    onAdd({
+      id,
+      kind: "news", // tipo "news" pra compatibilidade com pipeline existente
+      title: opts.title.trim() || "Trecho colado",
+      url: opts.sourceUrl ?? null,
+      text: opts.text,
+      truncated: false,
+      status: "fetching",
+    });
+
+    try {
+      const res = await fetch("/api/context/extract", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          kind: "snippet",
+          title: opts.title.trim() || "Trecho colado",
+          text: opts.text,
+          source_url: opts.sourceUrl ?? null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        onUpdate(id, { status: "error", error: data.error ?? "Falhou" });
+      } else {
+        onUpdate(id, {
+          status: "ready",
+          kind: data.kind,
+          title: data.title,
+          text: data.text,
+          truncated: data.truncated,
+          comprehension: data.comprehension,
+        });
+      }
+    } catch (err) {
+      onUpdate(id, {
+        status: "error",
+        error: err instanceof Error ? err.message : "Erro",
+      });
     }
   }
 
@@ -235,8 +299,9 @@ export function ContextAttachments({
   return (
     <div className="space-y-4">
       <p className="text-xs text-muted-foreground">
-        Cole link de vídeo, notícia ou solta um PDF. O motor lê tudo, junta
-        com seu estilo e (se quiser) sugere ângulos pra você partir.
+        Cole link de vídeo, notícia, solta um PDF, ou cola um trecho direto
+        (LinkedIn / paywall / qualquer texto). O motor lê tudo, junta com
+        seu estilo e (se quiser) sugere ângulos pra você partir.
       </p>
 
       {/* Input de URL */}
@@ -282,7 +347,78 @@ export function ContextAttachments({
             }}
           />
         </label>
+        <button
+          type="button"
+          onClick={() => setSnippetOpen((v) => !v)}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-dashed border-border bg-background px-3 py-2 text-xs font-medium text-muted-foreground transition hover:bg-secondary"
+          title="Pra LinkedIn, paywalls, ou qualquer texto que você tenha na mão"
+        >
+          <ClipboardPaste className="h-3.5 w-3.5" />
+          Colar trecho
+        </button>
       </div>
+
+      {/* Form de snippet — colar trecho direto */}
+      {snippetOpen && (
+        <div className="space-y-2 rounded-xl border border-brand-200 bg-brand-50/30 p-3">
+          <p className="text-xs text-muted-foreground">
+            Cola aqui o texto que você quer usar como referência. Resolve
+            LinkedIn (que não dá pra ler de fora), paywall, ou qualquer
+            material que você tem na mão.
+          </p>
+          <Input
+            value={snippetTitle}
+            onChange={(e) => setSnippetTitle(e.target.value)}
+            placeholder="Título / origem do trecho (ex: Post do Pierre Hérubel)"
+            className="text-sm"
+          />
+          <textarea
+            value={snippetText}
+            onChange={(e) => setSnippetText(e.target.value)}
+            placeholder="Cole o texto aqui (mínimo 20 caracteres)…"
+            rows={6}
+            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500"
+          />
+          <Input
+            value={snippetSourceUrl}
+            onChange={(e) => setSnippetSourceUrl(e.target.value)}
+            placeholder="URL de origem (opcional) — pra rastreio no editor"
+            className="text-xs"
+          />
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setSnippetOpen(false);
+                setSnippetTitle("");
+                setSnippetText("");
+                setSnippetSourceUrl("");
+              }}
+              className="text-xs text-muted-foreground hover:text-foreground"
+            >
+              Cancelar
+            </button>
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={snippetText.trim().length < 20}
+              onClick={async () => {
+                await addSnippet({
+                  title: snippetTitle,
+                  text: snippetText,
+                  sourceUrl: snippetSourceUrl.trim() || null,
+                });
+                setSnippetOpen(false);
+                setSnippetTitle("");
+                setSnippetText("");
+                setSnippetSourceUrl("");
+              }}
+            >
+              Adicionar trecho
+            </Button>
+          </div>
+        </div>
+      )}
 
       {error && (
         <p className="rounded-lg border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">

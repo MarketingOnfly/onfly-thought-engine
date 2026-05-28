@@ -24,6 +24,15 @@ const schema = z.discriminatedUnion("kind", [
     storage_path: z.string().min(3),
     name: z.string().min(1),
   }),
+  // NOVO: snippet = trecho colado diretamente. Resolve LinkedIn,
+  // paywall, ou qualquer caso onde o líder tem o texto na mão e quer
+  // alimentar o motor sem depender de scraping.
+  z.object({
+    kind: z.literal("snippet"),
+    title: z.string().min(1).max(200),
+    text: z.string().min(20).max(15_000),
+    source_url: z.string().url().optional().nullable(),
+  }),
 ]);
 
 export type ExtractInput = z.infer<typeof schema>;
@@ -175,6 +184,24 @@ export async function POST(request: NextRequest) {
         url: art.url,
         text: art.text,
         truncated: art.truncated,
+        comprehension,
+      });
+    }
+
+    // snippet = trecho colado direto (LinkedIn, paywall, qualquer texto)
+    if (input.kind === "snippet") {
+      const comprehension = await comprehendLink({
+        rawText: input.text,
+        hintTitle: input.title,
+        hintUrl: input.source_url ?? null,
+        kind: "discovery",
+      });
+      return NextResponse.json<ExtractResult>({
+        kind: "news", // tipo "news" no enum porque é o mais próximo
+        title: input.title,
+        url: input.source_url ?? null,
+        text: input.text,
+        truncated: false,
         comprehension,
       });
     }

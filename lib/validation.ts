@@ -103,6 +103,16 @@ export const generateContentSchema = z.object({
     .nullable(),
 });
 
+// Schema do /api/context/extract aceita agora kind="snippet" pra trecho
+// colado direto (texto puro do líder, sem fetch). Resolve LinkedIn,
+// paywalls completos, ou qualquer caso onde o líder tem o texto na mão.
+export const extractSnippetSchema = z.object({
+  kind: z.literal("snippet"),
+  title: z.string().min(1).max(200),
+  text: z.string().min(20).max(15_000),
+  source_url: z.string().url().optional().nullable(),
+});
+
 export const reviseContentSchema = z.object({
   draft_id: z.string().uuid(),
   instructions: z.string().min(5),
