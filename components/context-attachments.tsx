@@ -432,8 +432,26 @@ export function ContextAttachments({
 }
 
 /**
+ * Limpa em dashes e tells claros de IA do texto extraído ANTES de injetar
+ * no prompt. Caso contrário, o modelo "contagia" o estilo do artigo
+ * original (que muitas vezes é escrito por IA) e replica os mesmos
+ * padrões no draft final.
+ */
+function sanitizeExtractedText(raw: string): string {
+  return raw
+    .replace(/ — /g, ", ")
+    .replace(/—/g, ", ")
+    .replace(/  +/g, " ");
+}
+
+/**
  * Formata os anexos prontos como bloco de texto pra injetar no prompt
  * de geração — vai junto do `extra_instructions`.
+ *
+ * IMPORTANTE: o texto extraído de notícia/PDF/YouTube vai junto, mas
+ * com instrução EXPLÍCITA pro modelo NÃO COPIAR ESTILO, só puxar fato.
+ * Notícia geralmente é escrita por IA hoje em dia (em dashes, "não é X,
+ * é Y", floreio, etc.). Sem essa barreira, o draft herda esses tells.
  */
 export function attachmentsToPromptBlock(attachments: Attachment[]): string {
   const ready = attachments.filter(
@@ -441,7 +459,14 @@ export function attachmentsToPromptBlock(attachments: Attachment[]): string {
   );
   if (!ready.length) return "";
   return [
-    "MATERIAIS DE APOIO (use como matéria-prima — cite número, fato ou frase concreta quando fizer sentido; NÃO copie trechos longos):",
+    "MATERIAIS DE APOIO (matéria-prima de FATO, não de ESTILO):",
+    "",
+    "REGRA DURA sobre estes materiais:",
+    "1. Use APENAS pra pegar fato concreto: número, nome próprio, data, citação curta, decisão tomada, resultado medido.",
+    "2. NUNCA copie o tom, o vocabulário, ou a estrutura de frase dos textos abaixo. A maioria de notícia hoje é redigida por IA e CARREGA todos os tells que a gente combate (em dash, 'não é X, é Y', floreio, três adjetivos, jornada/ecossistema/etc).",
+    "3. Se um trecho dos materiais já vem com cara de IA, ISOLE o fato e descarte o estilo. Reescreva o fato na voz do líder.",
+    "4. Se for citar diretamente, use aspas curtas (1 frase no máximo) e só quando a citação for de uma PESSOA nomeada, não de prosa genérica do veículo.",
+    "",
     ...ready.map((a, i) => {
       const kindLabel =
         a.kind === "youtube"
@@ -451,9 +476,10 @@ export function attachmentsToPromptBlock(attachments: Attachment[]): string {
             : a.kind === "pdf"
               ? "PDF"
               : "Fonte de discovery";
-      return `\n[${i + 1}] ${kindLabel} — ${a.title}${
+      const sanitized = sanitizeExtractedText(a.text);
+      return `\n[${i + 1}] ${kindLabel}: ${a.title}${
         a.url ? ` (${a.url})` : ""
-      }\n${a.text.slice(0, 5000)}`;
+      }\n${sanitized.slice(0, 5000)}`;
     }),
   ].join("\n");
 }

@@ -44,10 +44,35 @@ const HUMANIZER_RULES = `REGRAS ANTI-IA (não negociáveis, mais importante que 
 
 ESTRUTURA E PESO:
 - Em dash (—) PROIBIDO em qualquer uso. Não existe em dash "não decorativo" aqui. Nunca use o caracter —. Substitua por ponto, vírgula ou dois-pontos.
-  ✗ "O modelo — lançado em 2023 — virou referência." → ✓ "O modelo, lançado em 2023, virou referência."
-  ✗ "Resultado — crescimento de 40%." → ✓ "Resultado: crescimento de 40%."
+  ✗ "O modelo, lançado em 2023, virou referência." (com em dash em volta da aposição)
+  ✓ "O modelo, lançado em 2023, virou referência."
   Antes de finalizar, faça Ctrl+F por "—" no texto. Se achar um sequer, corrija.
-- Sem paralelismos negativos do tipo "não é X, é Y" ou "isto não apenas A, mas também B".
+
+- CONTRAPOSIÇÃO PARALELA (segundo maior tell de IA depois do em dash) é PROIBIDA em TODAS as variantes:
+  ✗ "Não é X, é Y."
+  ✗ "Não é só X, é Y."
+  ✗ "Não apenas X, mas Y."
+  ✗ "Não se trata de X, é/mas Y."
+  ✗ "Mais do que X, é Y."
+  ✗ "Isso não é X, é Y."
+  ✗ "Não é sobre X, é sobre Y."
+
+  Esses padrões soam como ensaio de cursinho ou texto motivacional. Líder humano com voz própria reformula em frases independentes ou corta um dos lados.
+
+  Como reescrever cada padrão:
+  ✗ "Não é sobre cortar custo, é sobre eficiência."
+  ✓ "Eficiência rende mais que cortar custo." (vira afirmação direta)
+
+  ✗ "Mais do que ferramenta, é processo."
+  ✓ "É processo. Ferramenta resolve depois." (vira 2 frases)
+
+  ✗ "Isso não é só performance, é estratégia."
+  ✓ "Isso é estratégia. Performance vem como consequência." (vira 2 frases)
+
+  ✗ "Não se trata de medir tudo, é sobre medir o certo."
+  ✓ "Mede o certo. Não tudo." (curto, direto)
+
+  Antes de finalizar, releia procurando o padrão "Não [verbo] ..., [verbo]". Se achar UM SEQUER, reescreve.
 - Sem três adjetivos em sequência. Corte para um.
 - Sem hooks tipo "🚀 3 lições..." ou "Você já parou pra pensar...".
 - Sem listas numeradas com bullets vazios. Toda lista precisa de corpo e opinião.

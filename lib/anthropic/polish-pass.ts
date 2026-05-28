@@ -52,6 +52,43 @@ export function applyHardRules(text: string): string {
   return result.trim();
 }
 
+/**
+ * Detecta padrões de CONTRAPOSIÇÃO PARALELA estilo IA ("não é X, é Y",
+ * "mais do que X, é Y", "não se trata de X, mas Y") no texto. Esses
+ * padrões são o segundo maior tell de IA depois do em dash.
+ *
+ * Não substitui automaticamente (a quebra precisa ser feita pelo modelo
+ * com contexto). Devolve as ocorrências encontradas pra serem citadas
+ * no polish e re-escritas com inteligência.
+ */
+export function detectContraposicao(text: string): string[] {
+  const PATTERNS = [
+    // "não é X, é Y" / "não é só X, é Y" / "não é apenas X, é Y"
+    /\bnão\s+(?:é|são|foi|era|eram)\s+(?:só|apenas|somente)?\s*[^,.;]{2,40},\s*(?:é|são|foi|era|eram|mas|e\s+sim)\s/gi,
+    // "não se trata de X, (mas|é) Y"
+    /\bnão\s+se\s+trata\s+de\s+[^,.;]{2,40},\s*(?:mas|é)\s/gi,
+    // "mais do que X, é Y" / "mais do que X, Y é"
+    /\bmais\s+do\s+que\s+[^,.;]{2,40},\s+(?:é|são|foi|isso)\s/gi,
+    // "não é sobre X, é sobre Y"
+    /\bnão\s+é\s+sobre\s+[^,.;]{2,40},\s+é\s+sobre\s/gi,
+    // "isso não é X, é Y" / "isto não é"
+    /\b(?:isso|isto|esse|este|essa|esta)\s+não\s+é\s+(?:só|apenas|somente)?\s*[^,.;]{2,40},\s+é\s/gi,
+    // "não apenas X, mas (também) Y"
+    /\bnão\s+apenas\s+[^,.;]{2,40},\s+mas\s+(?:também\s+)?/gi,
+  ];
+
+  const hits: string[] = [];
+  for (const pattern of PATTERNS) {
+    const matches = text.match(pattern);
+    if (matches) {
+      for (const m of matches) {
+        hits.push(m.trim());
+      }
+    }
+  }
+  return Array.from(new Set(hits)).slice(0, 8); // dedup + limita
+}
+
 const PT_BR_CLICHES = [
   "no fim do dia",
   "no final do dia",
@@ -105,9 +142,19 @@ ${PT_BR_CLICHES.map((c) => `  - "${c}"`).join("\n")}]
 
 REGRA ABSOLUTA DE PONTUAÇÃO — ANTES DE TUDO:
 - Em dash (—, U+2014) é PROIBIDO. Substitua SEMPRE: vírgula, ponto ou ponto-e-vírgula.
-  ✗ "O sistema — criado em 2023 — mudou tudo." → ✓ "O sistema, criado em 2023, mudou tudo."
-  ✗ "Resultado — crescimento rápido." → ✓ "Resultado: crescimento rápido."
+  ✗ "O sistema, criado em 2023, mudou tudo." (errado, tinha em dash)
+  ✓ "O sistema, criado em 2023, mudou tudo."
   Procure TODOS os "—" no texto e elimine-os um a um antes de continuar.
+
+REGRA ABSOLUTA DE CONTRAPOSIÇÃO PARALELA — segundo maior tell de IA:
+- PROIBIDO usar qualquer variante de "não é X, é Y" / "não se trata de X, é Y" / "mais do que X, é Y" / "não apenas X, mas Y" / "não é só X, é Y" / "isso não é X, é Y".
+  Essas construções são a estrutura favorita da IA pra criar "profundidade" barata. Líder humano NÃO escreve assim.
+- COMO QUEBRAR: vire em duas frases independentes, OU corte um dos lados, OU reformule sem paralelismo.
+  ✗ "Não é sobre cortar custo, é sobre eficiência." → ✓ "Eficiência rende mais que cortar custo."
+  ✗ "Mais do que ferramenta, é processo." → ✓ "É processo. Ferramenta resolve depois."
+  ✗ "Isso não é só performance, é estratégia." → ✓ "Isso é estratégia. Performance vem como consequência."
+  ✗ "Não se trata de medir tudo, é sobre medir o certo." → ✓ "Mede o certo. Não tudo."
+- Procure TODA ocorrência desse padrão no texto e reescreva. Zero ocorrências é o único resultado aceitável.
 
 Outros tells de IA pra cortar (lista do skill /humanizer):
 - Adjetivos vagos em série (3+ adjetivos seguidos) — escolha UM ou troque por dado concreto
@@ -161,9 +208,16 @@ export async function polishPass(opts: {
 }): Promise<string> {
   if (!opts.draft?.trim()) return opts.draft ?? "";
 
+  // Detecta contraposições paralelas no draft antes de mandar pro polish.
+  // Se tiver, força o modelo a reescrever ESPECIFICAMENTE essas ocorrências.
+  const contraposicoes = detectContraposicao(opts.draft);
+  const contraposicoesHint = contraposicoes.length
+    ? `\n\nALERTA — JÁ DETECTEI ${contraposicoes.length} CONTRAPOSIÇÃO(ÕES) PARALELA(S) NO DRAFT (padrão "não X, é Y"). REESCREVA CADA UMA EM DUAS FRASES SEPARADAS ANTES DE QUALQUER OUTRA EDIÇÃO:\n${contraposicoes.map((c, i) => `  ${i + 1}. "${c}..."`).join("\n")}\n`
+    : "";
+
   const anthropic = getAnthropic();
   const userPrompt = `Formato: ${opts.format === "linkedin_post" ? "post de LinkedIn em pt-BR" : "artigo em pt-BR"}.
-${opts.notes ? `Contexto: ${opts.notes}\n` : ""}
+${opts.notes ? `Contexto: ${opts.notes}\n` : ""}${contraposicoesHint}
 DRAFT a polir (anti-clichê + cut 20% + sensorial):
 
 """
