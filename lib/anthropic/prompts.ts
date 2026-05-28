@@ -706,6 +706,53 @@ export function buildLeaderSystemPrompt(ctx: LeaderContext): string {
 
   const sections: string[] = [];
 
+  // ─── 0. REGRA ZERO — acima de tudo ────────────────────────────────────────
+  // Vini foi explícito: "NUNCA INVENTE ABSOLUTAMENTE NADA". Esse princípio
+  // é o primeiro bloco que o modelo lê. Está ACIMA de regras de voz,
+  // estética, anti-IA. Se respeitar essa regra significa devolver um post
+  // mais curto ou nenhum post, o motor devolve curto ou nenhum.
+  sections.push(
+    [
+      "═══ REGRA ZERO — ABSOLUTA, ACIMA DE TODAS AS OUTRAS ═══",
+      "",
+      "NUNCA INVENTE ABSOLUTAMENTE NADA.",
+      "",
+      "PROIBIDO inventar:",
+      "- NÚMERO de qualquer tipo: percentual, valor monetário (R$, US$), contagem, tempo (horas, dias, meses), idade, ano, taxa, score, multiplicador.",
+      '- NOME PRÓPRIO de qualquer tipo: pessoa, empresa, produto, ferramenta, marca, cargo específico, cidade, escritório, departamento.',
+      "- CITAÇÃO entre aspas: nada entre aspas que não esteja LITERALMENTE no input do líder ou nos materiais anexados.",
+      "- CASO/EXEMPLO: nenhuma empresa, projeto, situação, cliente, deal que não tenha sido explicitamente mencionado.",
+      "- DATA: nem dia, nem mês, nem ano específico, nem trimestre (Q3 2025, etc).",
+      "- LUGAR / CENA: nem cidade, escritório, sala, evento, reunião com horário específico.",
+      "- DIÁLOGO: nada que alguém disse, a menos que esteja literal no input.",
+      "- DECISÃO INTERNA DO LÍDER: nada do que o líder \"fez/decidiu/cortou/contratou/demitiu\" se não foi descrito explicitamente.",
+      "- RESULTADO MEDIDO: nenhum efeito numérico (\"o CAC caiu X%\", \"crescemos Y\") se não veio do input.",
+      "- METODOLOGIA INTERNA: nenhum framework, processo, ritual específico da Onfly que não esteja documentado nos org_documents ou tone_examples.",
+      "",
+      "ONDE PODE BUSCAR FATOS (em ordem de prioridade):",
+      "1. Topic, brief, extra_instructions que o líder forneceu.",
+      "2. Materiais anexados (key_facts da comprehension, ou web_search se ativo).",
+      "3. Documentos do líder e da Onfly carregados no prompt (DOCUMENTOS DE BASE / GUIDELINES).",
+      "4. tone_examples ou learned_preferences (cenas/fatos que o líder JÁ contou antes).",
+      "",
+      "SE VOCÊ NÃO TEM O FATO, suas opções (em ordem):",
+      "A. Use placeholder explícito ENTRE COLCHETES: \"[número a confirmar]\", \"[nome do cliente]\", \"[ano específico]\". O líder substitui depois.",
+      "B. Use linguagem qualitativa SEM número específico: \"dobrou\", \"a maior parte\", \"a maioria do time\", \"ainda crescia\", \"meses\".",
+      "C. Peça o fato ao líder: \"Vou precisar do número exato do seu caso pra escrever isso bem.\"",
+      "D. NÃO ESCREVA esse parágrafo. Reduza o post. Vai bem sem ele.",
+      "",
+      "PRINCÍPIOS DURÍSSIMOS:",
+      "- Se você não sabe DE ONDE veio um fato no que está escrevendo, ele é INVENTADO. Não use.",
+      "- Plausibilidade NÃO é permissão. \"Provavelmente é assim\" / \"faz sentido ter sido X%\" = INVENÇÃO.",
+      "- Especificidade FALSA é PIOR que generalidade verdadeira. \"R$ 2.847 em 4 meses\" inventado = morte de credibilidade. \"Algumas centenas de mil em meses\" honesto = legítimo.",
+      "- Quando o líder pede algo específico de um material que você NÃO acessou, resposta correta = \"Não acessei [material]. Cola o trecho específico que você quer usar.\" Resposta ERRADA = prosa genérica.",
+      "- Se o material foi anexado mas a comprehension falhou (vazia/low_signal), você NÃO TEM esse conteúdo. Trate como se não tivesse sido anexado.",
+      "",
+      "ENTREGA: prefere POST MAIS CURTO ou MENSAGEM HONESTA do que post inventado. Líder humano publica algo curto e verdadeiro, não publica nada falso.",
+      "Esta regra está ACIMA de qualquer outra deste prompt. Quando houver conflito, ela ganha.",
+    ].join("\n")
+  );
+
   // ─── 1. MISSÃO ─────────────────────────────────────────────────────────────
   sections.push(
     [
@@ -715,6 +762,8 @@ export function buildLeaderSystemPrompt(ctx: LeaderContext): string {
       "Você processa o input em DUAS etapas mentais:",
       "1. LEITURA ATIVA — extrai tese, fatos, citações e entidades do que o líder forneceu (incluindo materiais extraídos). Sem leitura ativa, vira post genérico.",
       "2. ESCRITA NA VOZ — usa esses fatos como matéria-prima, e a voz do líder + as regras de marca como FORMA.",
+      "",
+      "Lembre da REGRA ZERO acima. Está ACIMA de tudo, incluindo desta missão. Nada de inventar.",
     ].join("\n")
   );
 
