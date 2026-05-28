@@ -456,48 +456,102 @@ function describeLeaderDocs(docs: LeaderDocument[]): string {
 function describeOrgDocs(docs: OrgDocument[]): string {
   if (!docs.length) return "";
   return (
-    "GUIDELINES DA ONFLY (vinculantes, têm precedência sobre preferências individuais):\n\n" +
     docs
       .map((d) => `### ${d.name} (${d.kind})\n${d.content.trim()}`)
       .join("\n\n---\n\n")
   );
 }
 
+/**
+ * Hierarquia do system prompt — REORGANIZADA pra atenção do modelo.
+ *
+ * Antes era uma colcha de retalhos: cada seção misturada na mesma página
+ * mental. O modelo perdia atenção no meio porque não havia HIERARQUIA
+ * de prioridade clara.
+ *
+ * Agora vai em 6 blocos com cabeçalho explícito de ===, em ordem de
+ * primazia. O modelo lê do mais importante (regras duras) ao mais
+ * referencial (exemplos), sem confundir o que é instrução com o que é
+ * contexto.
+ */
 export function buildLeaderSystemPrompt(ctx: LeaderContext): string {
-  // learned_preferences fica no meio (dentro de describeLeader) E no fim,
-  // como lembrete de alta prioridade. LLMs tendem a perder atenção no meio
-  // de prompts longos — repetição perto do fim reforça sem custo de qualidade.
-  const learnedPrefsReminder = ctx.leader.learned_preferences?.trim()
-    ? `LEMBRETE FINAL — CALIBRAÇÃO INDIVIDUAL (antes de entregar, releia esses pontos e verifique um a um):\n${ctx.leader.learned_preferences.trim()}`
-    : "";
+  const learnedPrefs = ctx.leader.learned_preferences?.trim();
+  const orgDocsContent = describeOrgDocs(ctx.orgDocuments);
 
-  return [
-    "Você é o motor de thought leadership da Onfly. Sua única missão é produzir conteúdo de autoridade que pareça 100% escrito pelo líder em questão — não pela Onfly, não por uma IA, não por um ghostwriter genérico.",
-    "",
-    describeOrgDocs(ctx.orgDocuments),
-    "",
-    describeLeader(ctx.leader),
-    "",
-    describeReferenceProfiles(ctx.referenceProfiles),
-    "",
-    describeReferenceLinks(ctx.referenceLinks),
-    "",
-    describeLeaderDocs(ctx.leaderDocuments),
-    "",
-    HUMANIZER_RULES,
-    "",
-    EXEMPLAR_PT_BR_LINKEDIN,
-    "",
-    learnedPrefsReminder,
-    "",
-    "PRIORIDADES (em ordem):",
-    "1. Soar como o líder. Se o tom da Onfly entrar em conflito com o tom pessoal do líder, ganha o tom pessoal — desde que respeite as guidelines de marca.",
-    "2. Trazer opinião autoral. Conteúdo sem aposta é ruído.",
-    "3. Conectar argumento a impacto de negócio mensurável.",
-    "4. CTA, se houver, é sutil. Convite a continuar a conversa, nunca pitch.",
-  ]
-    .filter((line) => line !== undefined)
-    .join("\n");
+  const sections: string[] = [];
+
+  // ─── 1. MISSÃO ─────────────────────────────────────────────────────────────
+  sections.push(
+    [
+      "═══ MISSÃO ═══",
+      "Você é o motor de thought leadership da Onfly. Sua única missão é produzir conteúdo que pareça 100% escrito pelo líder descrito abaixo: não pela Onfly como marca, não por uma IA, não por ghostwriter genérico.",
+      "",
+      "Você processa o input em DUAS etapas mentais:",
+      "1. LEITURA ATIVA — extrai tese, fatos, citações e entidades do que o líder forneceu (incluindo materiais extraídos). Sem leitura ativa, vira post genérico.",
+      "2. ESCRITA NA VOZ — usa esses fatos como matéria-prima, e a voz do líder + as regras de marca como FORMA.",
+    ].join("\n")
+  );
+
+  // ─── 2. REGRAS DURAS (mais importante) ─────────────────────────────────────
+  sections.push(
+    [
+      "═══ REGRAS DURAS (NÃO NEGOCIÁVEIS) ═══",
+      orgDocsContent
+        ? `GUIDELINES DA ONFLY (vinculantes, precedem qualquer preferência individual):\n\n${orgDocsContent}\n\n---`
+        : "",
+      HUMANIZER_RULES,
+    ]
+      .filter(Boolean)
+      .join("\n\n")
+  );
+
+  // ─── 3. CALIBRAÇÃO INDIVIDUAL DO LÍDER ─────────────────────────────────────
+  sections.push(
+    [
+      "═══ CALIBRAÇÃO DESTE LÍDER ═══",
+      describeLeader(ctx.leader),
+      ctx.referenceProfiles.length
+        ? `\n${describeReferenceProfiles(ctx.referenceProfiles)}`
+        : "",
+      ctx.referenceLinks.length
+        ? `\n${describeReferenceLinks(ctx.referenceLinks)}`
+        : "",
+      ctx.leaderDocuments.length
+        ? `\n${describeLeaderDocs(ctx.leaderDocuments)}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n")
+  );
+
+  // ─── 4. EXEMPLARES DE VOZ PT-BR ────────────────────────────────────────────
+  sections.push(EXEMPLAR_PT_BR_LINKEDIN);
+
+  // ─── 5. LEMBRETE FINAL DAS PREFERÊNCIAS APRENDIDAS ─────────────────────────
+  if (learnedPrefs) {
+    sections.push(
+      [
+        "═══ LEMBRETE FINAL — PREFERÊNCIAS APRENDIDAS ═══",
+        "Antes de entregar, releia ponto a ponto e confira que o texto respeita CADA UM destes itens (feedback acumulado deste líder específico):",
+        "",
+        learnedPrefs,
+      ].join("\n")
+    );
+  }
+
+  // ─── 6. PRIORIDADES (decisão de conflito) ──────────────────────────────────
+  sections.push(
+    [
+      "═══ PRIORIDADES EM CASO DE CONFLITO ═══",
+      "1. Soar como o líder. Se o tom da Onfly entrar em conflito com o tom pessoal do líder, ganha o tom pessoal, desde que respeite as REGRAS DURAS acima.",
+      "2. Trazer opinião autoral. Conteúdo sem aposta é ruído.",
+      "3. Conectar argumento a impacto de negócio mensurável quando couber.",
+      "4. CTA, se houver, é sutil. Convite a continuar a conversa, nunca pitch.",
+      "5. Se há materiais anexados, o draft DEVE citar pelo menos UM fato específico deles (número, nome próprio, citação nominal). Material existe pra ser USADO, não pra inspirar prosa genérica.",
+    ].join("\n")
+  );
+
+  return sections.join("\n\n");
 }
 
 const POST_GUIDELINES = `FORMATO: post de LinkedIn em português.

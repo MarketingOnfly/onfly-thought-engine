@@ -17,6 +17,10 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import {
+  comprehensionAsPromptBlock,
+  type LinkComprehension,
+} from "@/lib/anthropic/comprehend-link";
 
 export type AttachmentKind = "youtube" | "news" | "pdf" | "discovery";
 
@@ -29,6 +33,10 @@ export interface Attachment {
   truncated: boolean;
   status: "fetching" | "ready" | "error";
   error?: string;
+  // Compreensão estruturada do material (Claude leu o texto e devolveu
+  // fatos). Quando presente, é o que vai pro prompt. Texto cru é só
+  // fallback de exibição.
+  comprehension?: LinkComprehension;
 }
 
 export interface AngleSuggestion {
@@ -111,6 +119,7 @@ export function ContextAttachments({
           title: data.title,
           text: data.text,
           truncated: data.truncated,
+          comprehension: data.comprehension,
         });
       }
     } catch (err) {
@@ -180,6 +189,7 @@ export function ContextAttachments({
           title: data.title,
           text: data.text,
           truncated: data.truncated,
+          comprehension: data.comprehension,
         });
       }
     } catch (err) {
@@ -433,9 +443,7 @@ export function ContextAttachments({
 
 /**
  * Limpa em dashes e tells claros de IA do texto extraído ANTES de injetar
- * no prompt. Caso contrário, o modelo "contagia" o estilo do artigo
- * original (que muitas vezes é escrito por IA) e replica os mesmos
- * padrões no draft final.
+ * no prompt. Fallback pra quando a compreensão estruturada falhou.
  */
 function sanitizeExtractedText(raw: string): string {
   return raw
@@ -448,38 +456,76 @@ function sanitizeExtractedText(raw: string): string {
  * Formata os anexos prontos como bloco de texto pra injetar no prompt
  * de geração — vai junto do `extra_instructions`.
  *
- * IMPORTANTE: o texto extraído de notícia/PDF/YouTube vai junto, mas
- * com instrução EXPLÍCITA pro modelo NÃO COPIAR ESTILO, só puxar fato.
- * Notícia geralmente é escrita por IA hoje em dia (em dashes, "não é X,
- * é Y", floreio, etc.). Sem essa barreira, o draft herda esses tells.
+ * MUDANÇA IMPORTANTE: agora o default é usar a COMPREENSÃO estruturada
+ * que o Claude já fez do material (key_facts, key_quotes, etc.). Texto
+ * cru só é usado se a compreensão falhou (low_signal ou comprehension_failed).
+ *
+ * Antes: jogávamos HTML-stripped no prompt. Modelo lia em modo skim,
+ * subliminamente copiava estilo da fonte, e às vezes nem citava fact
+ * concreto. Agora: modelo vê SÓ fatos limpos.
  */
 export function attachmentsToPromptBlock(attachments: Attachment[]): string {
   const ready = attachments.filter(
     (a) => a.status === "ready" && a.text.trim().length > 0
   );
   if (!ready.length) return "";
-  return [
-    "MATERIAIS DE APOIO (matéria-prima de FATO, não de ESTILO):",
-    "",
-    "REGRA DURA sobre estes materiais:",
-    "1. Use APENAS pra pegar fato concreto: número, nome próprio, data, citação curta, decisão tomada, resultado medido.",
-    "2. NUNCA copie o tom, o vocabulário, ou a estrutura de frase dos textos abaixo. A maioria de notícia hoje é redigida por IA e CARREGA todos os tells que a gente combate (em dash, 'não é X, é Y', floreio, três adjetivos, jornada/ecossistema/etc).",
-    "3. Se um trecho dos materiais já vem com cara de IA, ISOLE o fato e descarte o estilo. Reescreva o fato na voz do líder.",
-    "4. Se for citar diretamente, use aspas curtas (1 frase no máximo) e só quando a citação for de uma PESSOA nomeada, não de prosa genérica do veículo.",
-    "",
-    ...ready.map((a, i) => {
-      const kindLabel =
-        a.kind === "youtube"
-          ? "Vídeo"
-          : a.kind === "news"
-            ? "Notícia"
-            : a.kind === "pdf"
-              ? "PDF"
-              : "Fonte de discovery";
-      const sanitized = sanitizeExtractedText(a.text);
-      return `\n[${i + 1}] ${kindLabel}: ${a.title}${
-        a.url ? ` (${a.url})` : ""
-      }\n${sanitized.slice(0, 5000)}`;
-    }),
-  ].join("\n");
+
+  // Separa: anexos com compreensão estruturada vs fallback
+  const withComprehension = ready
+    .map((a, i) => ({ attachment: a, index: i }))
+    .filter(
+      (
+        x
+      ): x is { attachment: Attachment & { comprehension: LinkComprehension }; index: number } =>
+        !!x.attachment.comprehension &&
+        !x.attachment.comprehension.comprehension_failed
+    );
+
+  const withoutComprehension = ready
+    .map((a, i) => ({ attachment: a, index: i }))
+    .filter(
+      ({ attachment }) =>
+        !attachment.comprehension || attachment.comprehension.comprehension_failed
+    );
+
+  const sections: string[] = [];
+
+  // Bloco 1: anexos com compreensão estruturada (path principal)
+  if (withComprehension.length > 0) {
+    sections.push(
+      comprehensionAsPromptBlock(
+        withComprehension.map(({ attachment, index }) => ({
+          comprehension: attachment.comprehension!,
+          index,
+        }))
+      )
+    );
+  }
+
+  // Bloco 2: anexos sem compreensão (fallback - cuidado redobrado)
+  if (withoutComprehension.length > 0) {
+    sections.push(
+      [
+        "MATERIAIS DE APOIO SEM COMPREENSÃO ESTRUTURADA (cautela):",
+        "Estes materiais não foram destilados em fatos estruturados (paywall, conteúdo pobre, ou falha). Use SÓ pra pegar fato concreto. NUNCA copie tom/estilo.",
+        "",
+        ...withoutComprehension.map(({ attachment: a, index }) => {
+          const kindLabel =
+            a.kind === "youtube"
+              ? "Vídeo"
+              : a.kind === "news"
+                ? "Notícia"
+                : a.kind === "pdf"
+                  ? "PDF"
+                  : "Fonte de discovery";
+          const sanitized = sanitizeExtractedText(a.text);
+          return `[${index + 1}] ${kindLabel}: ${a.title}${
+            a.url ? ` (${a.url})` : ""
+          }\n${sanitized.slice(0, 3000)}`;
+        }),
+      ].join("\n")
+    );
+  }
+
+  return sections.join("\n\n");
 }

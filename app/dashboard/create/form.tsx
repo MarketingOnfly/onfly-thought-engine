@@ -138,6 +138,7 @@ export default function CreateForm({
                   title: data.title || prefillSource.title,
                   text: data.text,
                   truncated: data.truncated,
+                  comprehension: data.comprehension,
                 }
               : a
           )
@@ -203,6 +204,13 @@ export default function CreateForm({
       .filter(Boolean)
       .join("\n\n---\n\n");
 
+    // Reúne os key_facts de todas as compreensões dos materiais anexados.
+    // O backend usa isso pra verificar que o draft cita pelo menos um.
+    const mustCiteFacts = attachments
+      .filter((a) => a.status === "ready" && a.comprehension?.key_facts?.length)
+      .flatMap((a) => a.comprehension?.key_facts ?? [])
+      .slice(0, 12);
+
     const res = await apiFetch<{ draft: ContentDraft }>("/api/content/generate", {
       method: "POST",
       body: JSON.stringify({
@@ -218,6 +226,7 @@ export default function CreateForm({
         variations,
         mood,
         fact_check: factCheck,
+        must_cite_facts: mustCiteFacts.length ? mustCiteFacts : null,
       }),
     });
     setBusy(false);

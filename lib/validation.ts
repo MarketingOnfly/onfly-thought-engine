@@ -88,6 +88,10 @@ export const generateContentSchema = z.object({
   variations: z.number().int().min(1).max(3).optional().default(1),
   mood: z.enum(["best_day", "critical", "reflective"]).optional().nullable(),
   fact_check: z.boolean().optional().default(false),
+  // Lista de fatos extraídos da compreensão dos materiais anexados.
+  // O polish-pass verifica que o draft cita pelo menos UM. Se vazio,
+  // sem verificação (líder não anexou material com fatos extraíveis).
+  must_cite_facts: z.array(z.string()).optional().nullable(),
 });
 
 export const reviseContentSchema = z.object({

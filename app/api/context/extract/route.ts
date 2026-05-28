@@ -7,6 +7,7 @@ import {
 import { extractArticle } from "@/lib/extract-article";
 import { transcribeYoutube, extractVideoId } from "@/lib/transcribe-youtube";
 import { parseDocument } from "@/lib/parse-document";
+import { comprehendLink, type LinkComprehension } from "@/lib/anthropic/comprehend-link";
 
 export const maxDuration = 60;
 export const runtime = "nodejs";
@@ -29,6 +30,11 @@ export interface ExtractResult {
   url: string | null;
   text: string;
   truncated: boolean;
+  // Compreensão estruturada — Claude leu o texto bruto e devolveu fatos.
+  // O frontend usa isso pra montar o prompt, em vez do texto cru.
+  // Se undefined, é fallback: texto cru ainda funciona, só sem
+  // estrutura.
+  comprehension?: LinkComprehension;
 }
 
 /**
@@ -61,12 +67,19 @@ export async function POST(request: NextRequest) {
   try {
     if (input.kind === "youtube") {
       const yt = await transcribeYoutube(input.url);
+      const comprehension = await comprehendLink({
+        rawText: yt.text,
+        hintTitle: yt.title,
+        hintUrl: input.url,
+        kind: "youtube",
+      });
       return NextResponse.json<ExtractResult>({
         kind: "youtube",
         title: yt.title,
         url: input.url,
         text: yt.text,
         truncated: yt.truncated,
+        comprehension,
       });
     }
 
@@ -74,12 +87,19 @@ export async function POST(request: NextRequest) {
       // Detectar se é YouTube colado no campo de notícia
       if (extractVideoId(input.url)) {
         const yt = await transcribeYoutube(input.url);
+        const comprehension = await comprehendLink({
+          rawText: yt.text,
+          hintTitle: yt.title,
+          hintUrl: input.url,
+          kind: "youtube",
+        });
         return NextResponse.json<ExtractResult>({
           kind: "youtube",
           title: yt.title,
           url: input.url,
           text: yt.text,
           truncated: yt.truncated,
+          comprehension,
         });
       }
       // Detectar Spotify — não conseguimos transcrever áudio,
@@ -106,12 +126,19 @@ export async function POST(request: NextRequest) {
         );
       }
       const art = await extractArticle(input.url);
+      const comprehension = await comprehendLink({
+        rawText: art.text,
+        hintTitle: art.title,
+        hintUrl: art.url,
+        kind: "news",
+      });
       return NextResponse.json<ExtractResult>({
         kind: "news",
         title: art.title,
         url: art.url,
         text: art.text,
         truncated: art.truncated,
+        comprehension,
       });
     }
 
@@ -138,12 +165,19 @@ export async function POST(request: NextRequest) {
     // Limpa do Storage — anexo é transitório, não fica salvo
     await admin.storage.from("leader-documents").remove([input.storage_path]);
 
+    const comprehension = await comprehendLink({
+      rawText: parsedDoc.content,
+      hintTitle: parsedDoc.name,
+      hintUrl: null,
+      kind: "pdf",
+    });
     return NextResponse.json<ExtractResult>({
       kind: "pdf",
       title: parsedDoc.name,
       url: null,
       text: parsedDoc.content,
       truncated: parsedDoc.truncated,
+      comprehension,
     });
   } catch (err) {
     return NextResponse.json(

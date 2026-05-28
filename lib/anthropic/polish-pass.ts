@@ -89,6 +89,50 @@ export function detectContraposicao(text: string): string[] {
   return Array.from(new Set(hits)).slice(0, 8); // dedup + limita
 }
 
+/**
+ * Verifica se o draft cita pelo menos UM dos fatos passados. Pra cada
+ * fato, extrai "tokens significativos" (números, nomes próprios com
+ * maiúscula, percentuais, anos) e checa se algum aparece no draft.
+ * Devolve a lista de fatos NÃO citados — vazio = cita ao menos um.
+ */
+export function verifyFactsCited(
+  draft: string,
+  mustCiteFacts: string[]
+): { citedAny: boolean; uncitedFacts: string[] } {
+  if (!mustCiteFacts.length) return { citedAny: true, uncitedFacts: [] };
+
+  const draftLower = draft.toLowerCase();
+
+  function extractTokens(fact: string): string[] {
+    const tokens: string[] = [];
+    // Números (com vírgula/ponto, %, valores R$/USD/etc.)
+    const nums = fact.match(/\b\d+(?:[.,]\d+)?\s*(?:%|mil|milhão|milhões|bi|bilhão|bilhões|anos?|meses?|h\b|m\b|R\$|US\$|EUR)?/gi);
+    if (nums) tokens.push(...nums.map((n) => n.toLowerCase()));
+    // Anos 4 dígitos
+    const years = fact.match(/\b(?:19|20)\d{2}\b/g);
+    if (years) tokens.push(...years);
+    // Nomes próprios (palavra com maiúscula seguida de outra)
+    const names = fact.match(/\b[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç]{2,}(?:\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõç]+)?\b/g);
+    if (names) tokens.push(...names.map((n) => n.toLowerCase()));
+    return Array.from(new Set(tokens));
+  }
+
+  const uncitedFacts: string[] = [];
+  let citedAny = false;
+  for (const fact of mustCiteFacts) {
+    const tokens = extractTokens(fact);
+    const cited = tokens.some((t) => t.length >= 3 && draftLower.includes(t));
+    if (cited) {
+      citedAny = true;
+    } else if (tokens.length > 0) {
+      // Só conta como "não citado" se o fato tinha tokens significativos
+      // (fatos puramente qualitativos não são verificáveis)
+      uncitedFacts.push(fact);
+    }
+  }
+  return { citedAny, uncitedFacts };
+}
+
 const PT_BR_CLICHES = [
   "no fim do dia",
   "no final do dia",
@@ -205,19 +249,32 @@ export async function polishPass(opts: {
   draft: string;
   format: "linkedin_post" | "article";
   notes?: string; // contexto extra (ex: "esse é o draft B com mood crítico")
+  // Lista de fatos extraídos dos materiais anexados. Se passada, o
+  // polish verifica que o draft cita pelo menos 1. Se nenhum, alerta
+  // o modelo explicitamente pra incluir um durante o polish.
+  mustCiteFacts?: string[];
 }): Promise<string> {
   if (!opts.draft?.trim()) return opts.draft ?? "";
 
   // Detecta contraposições paralelas no draft antes de mandar pro polish.
-  // Se tiver, força o modelo a reescrever ESPECIFICAMENTE essas ocorrências.
   const contraposicoes = detectContraposicao(opts.draft);
   const contraposicoesHint = contraposicoes.length
     ? `\n\nALERTA — JÁ DETECTEI ${contraposicoes.length} CONTRAPOSIÇÃO(ÕES) PARALELA(S) NO DRAFT (padrão "não X, é Y"). REESCREVA CADA UMA EM DUAS FRASES SEPARADAS ANTES DE QUALQUER OUTRA EDIÇÃO:\n${contraposicoes.map((c, i) => `  ${i + 1}. "${c}..."`).join("\n")}\n`
     : "";
 
+  // Verifica se o draft cita algum fato dos materiais anexados.
+  // Se anexou material e nenhum fato foi citado, força o polish a incluir um.
+  const factCheck = opts.mustCiteFacts?.length
+    ? verifyFactsCited(opts.draft, opts.mustCiteFacts)
+    : { citedAny: true, uncitedFacts: [] };
+  const factsHint =
+    opts.mustCiteFacts?.length && !factCheck.citedAny
+      ? `\n\nALERTA — O LÍDER ANEXOU MATERIAL MAS O DRAFT NÃO CITA NENHUM FATO ESPECÍFICO. INCLUA NATURALMENTE PELO MENOS UM DESTES FATOS NO TEXTO POLIDO (escolha o mais forte, integra na narrativa, NÃO como bullet decorativo):\n${opts.mustCiteFacts.slice(0, 5).map((f, i) => `  ${i + 1}. ${f}`).join("\n")}\n`
+      : "";
+
   const anthropic = getAnthropic();
   const userPrompt = `Formato: ${opts.format === "linkedin_post" ? "post de LinkedIn em pt-BR" : "artigo em pt-BR"}.
-${opts.notes ? `Contexto: ${opts.notes}\n` : ""}${contraposicoesHint}
+${opts.notes ? `Contexto: ${opts.notes}\n` : ""}${contraposicoesHint}${factsHint}
 DRAFT a polir (anti-clichê + cut 20% + sensorial):
 
 """

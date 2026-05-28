@@ -289,6 +289,10 @@ export async function POST(request: NextRequest) {
           draft: d.raw,
           format: parsed.data.format,
           notes: `Versão ${labelForMood(d.moodKey)}`,
+          // Lista de fatos dos materiais anexados — polish verifica
+          // que o draft cita pelo menos um. Sem isso, o modelo
+          // "esquece" do material às vezes.
+          mustCiteFacts: parsed.data.must_cite_facts ?? undefined,
         })
       )
     );
