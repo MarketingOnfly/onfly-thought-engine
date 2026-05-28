@@ -141,7 +141,13 @@ Devolva o JSON estruturado.`;
     const response = await anthropic.messages.create({
       model: FAST_MODEL,
       max_tokens: 2500,
-      system: SYSTEM_PROMPT,
+      system: [
+        {
+          type: "text",
+          text: SYSTEM_PROMPT,
+          cache_control: { type: "ephemeral" },
+        },
+      ],
       messages: [{ role: "user", content: userPrompt }],
     });
 

@@ -67,7 +67,13 @@ export async function selfRepair(opts: {
   const response = await anthropic.messages.create({
     model: FAST_MODEL,
     max_tokens: opts.format === "linkedin_post" ? 1500 : 4500,
-    system: SYSTEM_PROMPT,
+    system: [
+      {
+        type: "text",
+        text: SYSTEM_PROMPT,
+        cache_control: { type: "ephemeral" },
+      },
+    ],
     messages: [{ role: "user", content: userPrompt }],
   });
 

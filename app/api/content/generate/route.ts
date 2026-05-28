@@ -48,54 +48,16 @@ function pickMoodBiases(
 }
 
 /**
- * Pra cada variação A/B/C, força um HOOK PATTERN distinto baseado no
- * skill /linkedin-thought-leader. Sem isso, as 3 variações tendem a
- * usar o mesmo padrão (geralmente "Revelação Pessoal") só com mood
- * diferente — variação semântica fraca.
+ * REMOVIDO em 2026-05-28: o pickHookPatterns forçava hook diferente
+ * em cada variação A/B/C, sobrescrevendo a escolha do planner. Isso
+ * gerava variações B e C artificialmente piores (com hook que o motor
+ * próprio considera inferior pra a ideia).
  *
- * Ordem prioriza diversidade: Stat surpresa → Ousada → Frustração →
- * Revelação → Pergunta. Se o líder pediu um hookStyle específico,
- * a 1ª variação usa esse (respeita preferência), as outras divergem.
+ * Agora todas as variações usam o hook ESCOLHIDO PELO PLANNER. A
+ * diferenciação A/B/C vem do MOOD (humor) — best_day vs critical vs
+ * reflective. O mesmo hook contado em 3 tons diferentes gera variação
+ * semântica REAL sem comprometer qualidade.
  */
-function pickHookPatterns(
-  chosenHook: string | null,
-  count: number
-): (string | null)[] {
-  const PATTERNS = [
-    "estatistica_surpresa", // "X% subiu. E ninguém percebeu."
-    "afirmacao_ousada", // "Travel virou tese de governança."
-    "frustracao_relatavel", // "O que ninguém fala sobre X..."
-    "revelacao_pessoal", // "Eu acreditava que X. Estava errado."
-    "pergunta_provocadora", // "E se X não fosse o objetivo?"
-  ];
-  // Mapeia hookStyle do líder pra um dos PATTERNS, ou usa o 1º
-  const seeded = chosenHook ?? PATTERNS[0];
-  const biases: (string | null)[] = [seeded];
-  if (count <= 1) return biases;
-  for (const p of PATTERNS) {
-    if (biases.length >= count) break;
-    if (biases.includes(p)) continue;
-    biases.push(p);
-  }
-  return biases.slice(0, count);
-}
-
-function hookHintFor(pattern: string | null): string {
-  if (!pattern) return "";
-  const HINTS: Record<string, string> = {
-    estatistica_surpresa:
-      "Abra com um número surpreendente seguido de afirmação curta. Ex: 'O CAC subiu 35% no Q3. E nenhum sócio percebeu.'",
-    afirmacao_ousada:
-      "Abra com uma afirmação ousada que desafie consenso. Ex: 'Documentação interna está morta. Aqui está por quê.'",
-    frustracao_relatavel:
-      "Abra com algo que o líder vive na pele que ninguém fala. Ex: 'O que ninguém fala sobre crescer time de 5 pra 50:'",
-    revelacao_pessoal:
-      "Abra com revelação de erro/mudança de visão. Ex: 'Eu defendia X. Estava errado. Aqui está o que mudou.'",
-    pergunta_provocadora:
-      "Abra com pergunta que vire premissa de cabeça pra baixo. Ex: 'E se a meta de retenção não fosse o objetivo? E se fosse a métrica errada?'",
-  };
-  return HINTS[pattern] ?? "";
-}
 
 function labelForMood(moodKey: string | null): string {
   if (!moodKey) return "humor padrão";
@@ -195,7 +157,6 @@ export async function POST(request: NextRequest) {
       parsed.data.hook_style ?? plan.recommended_hook_style ?? null;
     const effectiveContentType =
       parsed.data.content_type ?? plan.recommended_content_type ?? null;
-    const hookPatterns = pickHookPatterns(effectiveHookStyle, variations);
 
     // ============================================================
     // FASE 2 — DRAFT (Sonnet, N paralelas com mood distinto)
@@ -208,27 +169,16 @@ export async function POST(request: NextRequest) {
     });
 
     const anthropic = getAnthropic();
-    const calls = moodBiases.map(async (moodKey, idx) => {
-      const hookPattern = hookPatterns[idx];
-      const hookHint = hookHintFor(hookPattern);
-      // Injeta o hint do hook pattern direto no extra_instructions
-      // (em vez de criar um novo param no buildContentUserPrompt)
-      // Cada variação A/B/C força um padrão diferente do skill
-      // /linkedin-thought-leader
-      const extraWithHook = [
-        parsed.data.extra_instructions,
-        hookHint
-          ? `PADRÃO DE HOOK PRA ESSA VARIAÇÃO (não negocie — varia entre versões pra dar diversidade real): ${hookHint}`
-          : null,
-      ]
-        .filter(Boolean)
-        .join("\n\n");
-
+    const calls = moodBiases.map(async (moodKey) => {
+      // TODAS as variações usam o mesmo hook do planner. A diferenciação
+      // A/B/C vem do mood (humor) — best_day vs critical vs reflective.
+      // Forçar hook diferente em cada variação (como fazíamos antes)
+      // gerava B/C com hook que o motor considera inferior pra a ideia.
       const userPrompt = buildContentUserPrompt({
         format: parsed.data.format,
         topic: parsed.data.topic,
         brief: parsed.data.brief,
-        extraInstructions: extraWithHook || null,
+        extraInstructions: parsed.data.extra_instructions ?? null,
         // Usa a escolha do planner quando o líder não forçou
         hookStyle: effectiveHookStyle,
         objective: parsed.data.objective,
@@ -328,8 +278,13 @@ export async function POST(request: NextRequest) {
           const errorIssues = review.issues.filter(
             (i) => i.severity === "error"
           );
+          // Threshold ajustado em 2026-05-28:
+          // Antes: voice_match < 75 OU 1+ error → repair (disparava em maioria)
+          // Agora: voice_match < 60 OU 2+ errors → repair (só quando ruim de fato)
+          // O polish + applyHardRules já limpou o óbvio. Repair que dispara
+          // por 1 issue menor reescreve o texto e perde voz boa no caminho.
           const needsRepair =
-            review.voice_match_score < 75 || errorIssues.length > 0;
+            review.voice_match_score < 60 || errorIssues.length >= 2;
 
           if (!needsRepair) return { ...v, review, repaired: false };
 
@@ -402,14 +357,16 @@ export async function POST(request: NextRequest) {
           // motor escolheu quando ele deixou em automático.
           effective_hook_style: effectiveHookStyle,
           effective_content_type: effectiveContentType,
-          hook_chosen_by:
-            parsed.data.hook_style ? "leader" : plan.recommended_hook_style ? "planner" : "default",
-          content_type_chosen_by:
-            parsed.data.content_type
-              ? "leader"
-              : plan.recommended_content_type
-                ? "planner"
-                : "default",
+          hook_chosen_by: parsed.data.hook_style
+            ? "leader"
+            : plan.recommended_hook_style
+              ? "planner"
+              : "default",
+          content_type_chosen_by: parsed.data.content_type
+            ? "leader"
+            : plan.recommended_content_type
+              ? "planner"
+              : "default",
         },
       })
       .eq("id", draftId)

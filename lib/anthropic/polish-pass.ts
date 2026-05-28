@@ -75,15 +75,15 @@ export function detectContraposicao(text: string): string[] {
     /\b(?:isso|isto|esse|este|essa|esta)\s+não\s+é\s+(?:só|apenas|somente)?\s*[^,.;]{2,40},\s+é\s/gi,
     // "não apenas X, mas (também) Y"
     /\bnão\s+apenas\s+[^,.;]{2,40},\s+mas\s+(?:também\s+)?/gi,
-    // CONTRAPOSIÇÃO ANTÔNIMA SEM "NÃO" (caso do Gui Moscardini):
-    // "Estava certo X, errado Y" / "Era bom X, ruim Y" / "Pareceu fácil, foi difícil"
-    /\b(?:estava|era|estou|sou|fui|fica|ficou|pareceu|parece|foi)\s+(?:certo|errado|bom|ruim|fácil|difícil|claro|escuro|simples|complexo|leve|pesado|rápido|lento)\s+(?:na?o?s?|em|com|sobre|de|do|da)\s+[^,.;]{1,30},\s+(?:errado|certo|bom|ruim|fácil|difícil|claro|escuro|simples|complexo|leve|pesado|rápido|lento|negação)\b/gi,
-    // CONTRAPOSIÇÃO "O QUE MUDA / O QUE NÃO MUDA" (também do Gui):
+    // CONTRAPOSIÇÃO ANTÔNIMA ESPECÍFICA — só quando o padrão é
+    // VERBO + ADJ_A + VÍRGULA + ADJ_OPOSTO (curto, sem outras palavras).
+    // Ajustada em 2026-05-28: a regex anterior pegava muito falso positivo
+    // tipo "Era certo na hora, errado depois" (que é prosa válida, não AI tell).
+    // Agora exige que o adjetivo oposto venha IMEDIATAMENTE após a vírgula,
+    // dentro de 1-3 palavras (típico AI tell, não prosa natural).
+    /\b(?:estava|era|estou|sou|fui|fica|ficou|pareceu|parece|foi)\s+(certo|errado|bom|ruim|claro|escuro|simples|complexo)\s+[^,.;]{1,15},\s+(?:errado|certo|ruim|bom|escuro|claro|complexo|simples)\s+(?:em|na|no|com|sobre)\b/gi,
+    // CONTRAPOSIÇÃO "O QUE MUDA / O QUE NÃO MUDA":
     /\bo\s+que\s+(\w+):\s+[^.]+\.\s+o\s+que\s+não\s+\1\b/gi,
-    // "X, virou Y" / "X, virei Y" (mudança que vira contraposição)
-    /\b[A-ZÁÉÍÓÚÂÊÔÃÕÇ]?[a-záéíóúâêôãõç]+\s+[^,.;]{2,30},\s+(?:virou|virei|virava)\s+/g,
-    // "EU [verbo] X. MAS [verbo contrário]" — padrão "Eu aceitava X. Mas Y não"
-    // Esse é mais difícil de capturar sem falso positivo. Deixa só os acima.
   ];
 
   const hits: string[] = [];
@@ -331,7 +331,15 @@ Devolva o texto polido apenas.`;
   const response = await anthropic.messages.create({
     model: FAST_MODEL,
     max_tokens: opts.format === "linkedin_post" ? 1500 : 4500,
-    system: SYSTEM_PROMPT,
+    // cache_control no system pra reutilizar entre N variações da mesma
+    // geração (cada uma chama polishPass com o mesmo system grande).
+    system: [
+      {
+        type: "text",
+        text: SYSTEM_PROMPT,
+        cache_control: { type: "ephemeral" },
+      },
+    ],
     messages: [{ role: "user", content: userPrompt }],
   });
 
