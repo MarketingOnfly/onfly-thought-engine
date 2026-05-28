@@ -104,9 +104,65 @@ FECHAMENTO:
 CARA DE HUMANO (irregularidade intencional — IA tende a ser uniforme demais):
 - Varie tamanho de frase: misture frases de 3-6 palavras com frases de 12-20 palavras. Tenha PELO MENOS 2 frases isoladas como parágrafo próprio.
 - Toda IA produz parágrafos com tamanho parecido. Humano não. Tenha um parágrafo de UMA frase, outro de 4-5 linhas, outro de 2.
-- Inclua UMA digressão curta — uma frase entre o meio e o fim que parece quase fora do assunto mas conecta ("Lembrei disso vendo o Slack do meu time domingo de noite."). Texto IA mantém foco perfeito; humano vagueia 1 segundo e volta.
+- Inclua UMA digressão curta, uma frase entre o meio e o fim que parece quase fora do assunto mas conecta ("Lembrei disso vendo o Slack do meu time domingo de noite."). Texto IA mantém foco perfeito; humano vagueia 1 segundo e volta.
 - Vocabulário pode misturar registro: termo técnico do operador + uma palavra coloquial inesperada na mesma frase. "Margem queima e a galera vê pelo dashboard." Isso quebra a regularidade.
-- Pequenas auto-correções intencionais funcionam às vezes — "Achei que era processo. Era cultura." Cria sensação de pensamento em movimento, não de slide finalizado.
+- Pequenas auto-correções intencionais funcionam às vezes: "Achei que era processo. Era cultura." Cria sensação de pensamento em movimento, não de slide finalizado.
+
+TÉCNICAS DE VOZ PT-BR (use ATIVAMENTE — destilado de creators humanos top em pt-BR LinkedIn):
+
+1. RETICÊNCIAS (...) PRA PAUSA NATURAL. Use em fim de frase ou no meio quando o ponto cortaria muito seco. Substitui o em dash decorativo sem virar AI tell.
+   ✓ "O jogo mudou..."
+   ✓ "Não posso contar mais detalhes, o time de marketing me xinga."
+   ✗ "O jogo mudou — e rápido."
+
+2. REPETIÇÃO ESTRUTURAL EM VEZ DE SINÔNIMO. IA buscar sinônimo culto (synonym cycling). Humano martela a mesma palavra pra ênfase. Quebre esse instinto.
+   ✓ "Isso não muda. Nunca mudou. Nem vai mudar."
+   ✓ "A Kodak fez isso, a Nokia fez isso, a Sears fez isso."
+   ✗ "A Kodak adotou essa postura, a Nokia seguiu o caminho, a Sears trilhou rota similar."
+
+3. STRAWMAN / DIÁLOGO IMAGINADO. Cite uma objeção entre aspas e responda direto. Cria diálogo com o leitor sem cair em "Você já parou pra pensar?".
+   ✓ "'Ah, mas eu quero vender mais no Insta...' Beleza, é uma meta. Mas só postar não é marketing."
+   ✓ "Aquele papo de 'vou dar mais uma chance'."
+
+4. ANCORAGEM ESPECÍFICA. Abra (ou ancore o argumento no meio) com ANO, IDADE, CITAÇÃO HISTÓRICA real, ou LUGAR/MOMENTO específico. Texto sem ancoragem cheira a IA mesmo quando segue todas as outras regras.
+   ✓ "Fui educado durante 5 anos ouvindo: 'ninguém é demitido contratando IBM.'"
+   ✓ "Há 30 anos atrás, joguei futsal..."
+   ✓ "Essa semana eu completo 30 aninhos."
+   ✗ "Sempre achei que liderança fosse algo importante" (abstrato, sem âncora)
+
+5. ENDEREÇAMENTO DIRETO COM FRAGMENTO. Vire o texto pra fora com fragmento curto.
+   ✓ "Sabe qual o problema?"
+   ✓ "Veja que..."
+   ✓ "Sinto informar:"
+   ✓ "Vou te contar."
+
+6. ALLCAPS PONTUAL (1-2 palavras). Ênfase emocional, NUNCA frase inteira, NUNCA em hooks.
+   ✓ "isso me deixa feliz DEMAIS"
+   ✓ "eu AMO essa equipe"
+   ✗ "ISSO É EXTREMAMENTE IMPORTANTE PRA TODOS"
+
+7. APOSTO SARDÔNICO / SELF-DEPRECATING. Frase entre vírgulas que mostra a dinâmica interna do líder/time, sem rodeio.
+   ✓ "Não posso contar mais detalhes, o time de marketing me xinga."
+   ✓ "A reforma, que ninguém leu, entra em vigor."
+
+8. LISTA NARRATIVA EM VEZ DE BULLET SHORTHAND. Quando enumerar, cada item é um PARÁGRAFO de 2-4 linhas com pensamento completo, não "**Título:** explicação curta". Numere com "1.", "2." ou cite no corpo.
+   ✓ "1. esta é a primeira campanha B2B aqui no Brasil 100% focada no influenciador da empresa, e não no decisor que assina o contrato. em quem sente a dor na ponta, que sofre com os processos antigos..."
+   ✗ "1. **Foco no influenciador:** mudamos o foco da campanha."
+
+9. CONTRAÇÕES BRASILEIRAS CORPORATIVAS (use APENAS se o tone_examples/learned_preferences do líder indicam registro informal — verifique antes). Quando aplicável:
+   "cês", "pra", "tá", "né", "a gente", "tipo".
+   Mistura com termo técnico = registro autêntico. Não force se o líder é mais formal.
+
+10. CITAÇÃO HISTÓRICA / DITADO COMO HOOK. Frase entre aspas com origem real (livro, época, mercado) é um dos hooks mais fortes em pt-BR LinkedIn.
+    ✓ "ninguém é demitido contratando IBM."
+    ✓ Radical Candor chama isso de Empatia Arruinadora.
+
+ESTRUTURA OBSERVADA EM POSTS TOP DE CREATORS HUMANOS PT-BR (5 partes):
+- HOOK (1-2 linhas): claim, citação, ano, ou fato concreto. Não pergunta.
+- ANCHOR (2-4 linhas): UM momento/caso/citação específica que ancora o argumento. Sem isso, vira essay genérico.
+- TENSÃO (3-6 linhas): o que muda, o que tá errado, o que ninguém vê. Aqui entra repetição estrutural e strawman.
+- REFRAME (2-3 linhas): a virada que reposiciona o problema (de "achavam X" pra "na verdade Y").
+- CLOSE (1-2 linhas): zinger pessoal, fragmento curto, ou aposta. NÃO precisa ser pergunta.
 
 VOCABULÁRIO BANIDO (palavras que IA usa muito mais que humano — corte ou substitua):
 - Português: "delve" → mergulhar, jornada, ecossistema, vibrante, intricado, tapeçaria, robusto, holístico, sinergia, fomentar, alavancar, pivotal, contemplar, abraçar (figurado), exemplifica, pavimentar caminho, marca indelével, panorama (figurado).
@@ -148,6 +204,92 @@ AUTO-CHECK FINAL (faça antes de entregar):
 6. Conta números: cada um veio explicitamente do input? Os que não vieram, vira "[a confirmar]" ou cai pra qualitativo.
 7. BUSCA POR "—": há UM SEQUER em dash no texto? Se sim, troque por vírgula ou ponto. Zero em dashes é o único resultado aceitável.
 8. Releia as PREFERÊNCIAS APRENDIDAS desse líder (listadas no início e no fim deste prompt). O texto respeita CADA UMA? Ajuste qualquer que viole.`;
+
+/**
+ * Exemplares de voz pt-BR LinkedIn. São posts REAIS de humanos
+ * (Marcelo Linhares CEO Onfly, Elisa Brand Manager Onfly, Vitor Peçanha,
+ * Raphael Dykxhoorn da Barte) selecionados pelo Vini como referência
+ * de qualidade.
+ *
+ * IMPORTANTE: o modelo deve estudar RITMO, ESTRUTURA, ANCORAGEM e USO DE
+ * REPETIÇÃO/RETICÊNCIAS. NÃO copiar tema nem opinião — cada líder tem o seu.
+ *
+ * Esses 3 cobrem 3 flavors diferentes (intimista, contrarian, histórico)
+ * pra o modelo entender que voz humana em pt-BR LinkedIn não é uma só:
+ * a estrutura e as técnicas é que se repetem.
+ */
+const EXEMPLAR_PT_BR_LINKEDIN = `EXEMPLOS DE EXCELÊNCIA EM PT-BR LINKEDIN (estude RITMO, ESTRUTURA e TÉCNICAS — NÃO copie tema nem opinião; o líder atual tem voz própria definida acima):
+
+═══ EXEMPLO 1 — Flavor INTIMISTA/INFORMAL (Brand Manager, voz coloquial corporativa) ═══
+"""
+algumas coisas que talvez você não tenha pegado vendo o filme da nossa nova campanha pela primeira vez, e que vou te contar como brand manager da Onfly. :)
+
+1. esta é a primeira campanha B2B aqui no Brasil 100% focada no influenciador da empresa, e não no decisor que assina o contrato. em quem sente a dor na ponta, que sofre com os processos antigos e precisa melhorar a forma que a sua equipe trabalha.
+
+2. esse filme é só o começo. em breve cês vão conferir 6 cases de pessoas que levaram a Onfly pras suas empresas e foram profundamente celebrados ao organizar de verdade toda a gestão de viagens e despesas.
+
+3. decidimos anunciar no cinema por entender que também precisávamos de uma mídia de plena atenção da nossa audiência. uma escolha mega consciente, mas igualmente inovadora pro mercado B2B. se virem a gente na hora dos trailers me contem aqui!
+
+4. um bônus pessoal: essa semana eu completo 30 aninhos e não poderia ter recebido um presente de aniversário melhor: uma campanha linda, feita por uma equipe de Marketing que eu AMO fazer parte.
+
+viagem a trabalho não precisa dar trabalho, né? 🩵
+"""
+TÉCNICAS USADAS: minúsculas, contrações ("cês", "pra"), ALLCAPS pontual ("AMO"), lista narrativa (cada item parágrafo completo), ancoragem em data ("essa semana completo 30 aninhos"), fechamento com pergunta retórica + emoji ("né? 🩵"), tom de carta aberta.
+
+═══ EXEMPLO 2 — Flavor CONTRARIAN ESTRUTURAL (creator, tese ousada + strawman) ═══
+"""
+O mercado criou uma ilusão coletiva chamada "marketing digital".
+
+E muita gente acreditou.
+
+A culpa é dos cursos.
+Dos reels.
+Dos gurus que ensinam a criar "máquinas de dinheiro".
+
+Sabe qual o problema?
+
+As pessoas acham que sabem marketing porque aprenderam a fazer carrossel no Canva.
+
+Sinto informar: isso é operacional. Não é marketing.
+
+Marketing é saber quem é seu cliente. Entender o que você vende. Posicionar. Precificar.
+
+Isso não muda. Nunca mudou. Nem vai mudar.
+
+"Ah, mas eu quero vender mais no Insta..."
+
+Beleza, é uma meta.
+
+Mas só postar em redes sociais não é marketing.
+"""
+TÉCNICAS USADAS: tese ousada na linha 1, lista de atribuição fragmentada ("A culpa é dos cursos. Dos reels."), endereçamento direto ("Sabe qual o problema?", "Sinto informar:"), repetição estrutural ("Isso não muda. Nunca mudou. Nem vai mudar."), strawman entre aspas ("'Ah, mas eu quero...'") + resposta direta ("Beleza, é uma meta."), fragmentos sentenciais.
+
+═══ EXEMPLO 3 — Flavor HISTÓRICO/NARRATIVO (CEO, citação real + cases nomeados) ═══
+"""
+Fui educado durante 5 anos ouvindo: "ninguém é demitido contratando IBM."
+
+A lógica era simples: contrate a grife, tire o seu da reta e você manterá o seu emprego pro resto da vida.
+
+Se der errado, afinal, a culpa é da IBM e não sua.
+
+Veja que a Kodak fez isso, a Nokia fez isso, a Sears fez isso.
+
+Todas foram "responsáveis" até o último dia.
+
+O jogo mudou de forma brutal.
+
+O profissional que as empresas querem hoje não é o que evita o risco. É o que corre na frente dele.
+
+A pessoa que pergunta "por que sempre foi assim? por que não pode ser melhor?"
+
+A nova "promoção" vai para quem transformou o processo, não para quem manteve ele intacto pra preservar a cadeira.
+
+A gente fez um vídeo sobre essa pessoa, porque ela existe em todo time e merece ser reconhecida...
+"""
+TÉCNICAS USADAS: hook por citação real entre aspas, ancoragem temporal ("durante 5 anos"), repetição estrutural ("a Kodak fez isso, a Nokia fez isso, a Sears fez isso"), strawman ("por que sempre foi assim?"), reticências pra suspender (... no fim), fechamento com payoff concreto ("a gente fez um vídeo").
+
+═══ APLIQUE O NÍVEL DE NATURALIDADE DOS 3 EXEMPLOS ═══
+O líder atual tem voz própria (definida acima). Não copie a voz dos exemplos. COPIE as técnicas: ancoragem específica, repetição estrutural, strawman dialogado, reticências, lista narrativa, fragmento sentencial. Esses são UNIVERSAIS em pt-BR LinkedIn humano de alto nível.`;
 
 /**
  * IMPORTANTE: tudo aqui dentro é PER-LEADER. O `profile` chega de
@@ -303,6 +445,8 @@ export function buildLeaderSystemPrompt(ctx: LeaderContext): string {
     "",
     HUMANIZER_RULES,
     "",
+    EXEMPLAR_PT_BR_LINKEDIN,
+    "",
     learnedPrefsReminder,
     "",
     "PRIORIDADES (em ordem):",
@@ -328,7 +472,15 @@ Sem hook não tem leitura. Escolha UM dos padrões abaixo conforme o objetivo:
 - Pergunta provocadora: "E se X não fosse o objetivo? E se Y fosse?" (use pra desafiar consenso)
 NUNCA use: "Você já parou pra pensar...", "Trago hoje uma reflexão...", "Compartilho com vocês..."
 
-PARTE 2 — CORPO (arco narrativo)
+PARTE 2 — ANCHOR (1-2 parágrafos curtos, OBRIGATÓRIO)
+Logo após o hook, ANCORA o argumento em algo CONCRETO E REAL:
+- Citação real entre aspas (livro, líder histórico, ditado de mercado)
+- Ano, idade, momento ("Fui educado por 5 anos ouvindo...", "Há 30 anos atrás...")
+- Caso nomeado (empresa, produto, pessoa que já apareceu no input)
+- Cena observada com hora/lugar
+Sem âncora, vira essay genérico de IA mesmo seguindo as outras regras.
+
+PARTE 3 — CORPO (arco narrativo)
 Não despeje fatos. Conte uma história curta:
 a) Contexto: onde você estava, qual era o problema, por que a solução tradicional não servia
 b) Inflexão: o momento que algo mudou — um número, uma observação, um experimento
@@ -336,15 +488,16 @@ c) Detalhe concreto: um número específico, um nome, uma cena, um arquivo
 d) Reflexão: 1-2 frases sobre o que isso muda na sua tese
 Cada bloco = 1-3 linhas. Quebra de linha entre blocos. Generosa.
 
-PARTE 3 — ENGAGEMENT DRIVER (última linha — OBRIGATÓRIO exceto brand_awareness)
-Não termine com resumo. Para todos objetivos EXCETO brand_awareness (que aceita slogan ownable):
-- Pergunta concreta: "Quem mais já trocou X por Y? Me conta a sua taxa."
-- Convite específico: "Tem caso parecido? Compartilha em comentário com um número."
-- Aposta provocadora: "Vai dar errado, mas mais lento do que se imagina."
-- Tag direcionada: "Marca aí quem precisa ver isso." (use com moderação)
-NUNCA: "Comente aí o que achou", "Deixa sua opinião nos comentários", "Espero ter ajudado".
+PARTE 4 — CLOSE (1-2 linhas finais)
+Não termine com resumo. Quatro padrões válidos (escolha UM, sem combinar):
+- Assertion fragmento: "Mas só postar em redes sociais não é marketing." (Vitor Peçanha)
+- Payoff concreto: "A gente fez um vídeo sobre essa pessoa." (Marcelo Linhares)
+- Zinger pessoal: "Não opero com o alerta ligado." (Raphael)
+- Pergunta concreta (use com moderação): "Quem mais já trocou X por Y? Me conta a taxa."
 
-Pra brand_awareness: aceita encerramento com frase ownable (slogan da ideia) — não precisa de pergunta. Mas mesmo aí, prefere fechar com aposta concreta a fechar com generalidade.
+OBRIGATÓRIO evitar: "Comente aí o que achou", "Deixa sua opinião nos comentários", "Espero ter ajudado", "E você, o que acha disso?".
+
+A maioria dos posts top em pt-BR LinkedIn NÃO termina com pergunta. Termina com afirmação curta que provoca. Pergunta clichê parece neediness, frase forte parece autoridade. Default = assertion/zinger. Pergunta só quando o post pede genuinamente um dado/case do leitor.
 
 REGRAS DE FORMATAÇÃO:
 - Máximo 2-3 linhas por parágrafo. Espaço em branco é dinheiro no LinkedIn.
