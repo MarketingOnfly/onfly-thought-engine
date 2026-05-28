@@ -133,6 +133,113 @@ export function detectTriplas(text: string): string[] {
  * maiúscula, percentuais, anos) e checa se algum aparece no draft.
  * Devolve a lista de fatos NÃO citados — vazio = cita ao menos um.
  */
+/**
+ * Detecta TOKENS POTENCIALMENTE FABRICADOS no draft.
+ *
+ * Mesmo com REGRA ZERO no prompt, o modelo inventa números/datas/nomes
+ * pra "dar concretude". Caso real: gerou "três vezes nos últimos dois
+ * meses", "200 impressões", "fevereiro desse ano" — nada disso veio do
+ * input. Modelo ignorou a regra.
+ *
+ * Validação determinística: compara tokens específicos do draft com
+ * TODAS as fontes legítimas (input do líder + key_facts + docs). O que
+ * NÃO aparece em nenhuma fonte é flag de invenção.
+ */
+export function detectFabricatedTokens(
+  draft: string,
+  sources: {
+    topic?: string | null;
+    brief?: string | null;
+    extra_instructions?: string | null;
+    must_cite_facts?: string[];
+    learned_preferences?: string | null;
+    tone_examples?: string | null;
+    org_docs?: string;
+    leader_docs?: string;
+  }
+): { suspicious: string[]; verifiable_count: number } {
+  const allSourcesText = [
+    sources.topic ?? "",
+    sources.brief ?? "",
+    sources.extra_instructions ?? "",
+    (sources.must_cite_facts ?? []).join(" "),
+    sources.learned_preferences ?? "",
+    sources.tone_examples ?? "",
+    sources.org_docs ?? "",
+    sources.leader_docs ?? "",
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  const suspicious: string[] = [];
+  let verifiableCount = 0;
+
+  // NÚMEROS específicos com unidade
+  const numberPatterns = [
+    /\b\d+(?:[.,]\d+)?\s*%/g,
+    /\bR\$\s*\d+(?:\.\d{3})*(?:,\d+)?(?:\s*(?:mi|milhões|mil|bi|bilhões))?/gi,
+    /\bUS\$\s*\d+(?:[.,]\d+)?(?:\s*(?:mi|milhões|mil|bi|bilhões))?/gi,
+    /\b\d+\s*(?:vezes|x)\b/gi,
+    /\b\d+\s*(?:impressões|impressoes|cliques|conversões|conversoes|seguidores|inscritos|views|leads)/gi,
+    /\b\d+\s*(?:meses|anos|dias|semanas|horas|minutos)/gi,
+    /\b(?:19|20)\d{2}\b/g,
+    /\bQ[1-4]\s*(?:de\s+)?(?:19|20)\d{2}\b/gi,
+  ];
+
+  for (const pattern of numberPatterns) {
+    const matches = draft.match(pattern);
+    if (!matches) continue;
+    for (const m of matches) {
+      const token = m.toLowerCase();
+      const normalized = token.replace(/\s+/g, "").replace(/[.,]/g, "");
+      const sourceNormalized = allSourcesText.replace(/\s+/g, "").replace(/[.,]/g, "");
+      if (sourceNormalized.includes(normalized) || allSourcesText.includes(token)) {
+        verifiableCount++;
+      } else {
+        suspicious.push(m);
+      }
+    }
+  }
+
+  // DATAS específicas (mês + ano)
+  const datePatterns = [
+    /\b(?:janeiro|fevereiro|março|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)(?:\s+(?:de\s+)?(?:19|20)\d{2})?\b/gi,
+    /\b\d{1,2}\s+de\s+(?:janeiro|fevereiro|março|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)/gi,
+  ];
+  for (const pattern of datePatterns) {
+    const matches = draft.match(pattern);
+    if (!matches) continue;
+    for (const m of matches) {
+      if (allSourcesText.includes(m.toLowerCase())) verifiableCount++;
+      else suspicious.push(m);
+    }
+  }
+
+  // NOMES PRÓPRIOS de 2+ palavras
+  const namePattern =
+    /\b[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõçü]{2,}\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-záéíóúâêôãõçü]{2,}\b/g;
+  const nameMatches = draft.match(namePattern) ?? [];
+  for (const name of nameMatches) {
+    if (allSourcesText.includes(name.toLowerCase())) {
+      verifiableCount++;
+    } else {
+      const COMMON_FALSE_POSITIVES = [
+        "linkedin", "instagram", "facebook", "twitter", "google", "youtube",
+        "thought leadership", "growth marketing",
+      ];
+      const lower = name.toLowerCase();
+      if (!COMMON_FALSE_POSITIVES.some((fp) => lower.includes(fp))) {
+        suspicious.push(name);
+      }
+    }
+  }
+
+  return {
+    suspicious: Array.from(new Set(suspicious)).slice(0, 12),
+    verifiable_count: verifiableCount,
+  };
+}
+
 export function verifyFactsCited(
   draft: string,
   mustCiteFacts: string[]

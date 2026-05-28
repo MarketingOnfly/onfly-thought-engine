@@ -13,7 +13,11 @@ import {
   planAsPromptContext,
   planAsPromptContextForStrategy,
 } from "@/lib/anthropic/plan-content";
-import { polishPass, applyHardRules } from "@/lib/anthropic/polish-pass";
+import {
+  polishPass,
+  applyHardRules,
+  detectFabricatedTokens,
+} from "@/lib/anthropic/polish-pass";
 import { getFewShotExamples } from "@/lib/anthropic/few-shot";
 import { reviewText } from "@/lib/anthropic/review";
 import { selfRepair } from "@/lib/anthropic/self-repair";
@@ -486,7 +490,7 @@ Esse é o pior erro que esse motor pode cometer: fingir que leu o link e inventa
     // SAFETY NET 3 (FINAL): aplica applyHardRules em CADA versão antes
     // de salvar no banco. Mesmo que o critique/repair tenha reintroduzido
     // qualquer tell, o em dash não chega no editor do líder.
-    const final = critiqued
+    const beforeFabricationCheck = critiqued
       .map((r, i) =>
         r.status === "fulfilled"
           ? r.value
@@ -497,6 +501,93 @@ Esse é o pior erro que esse motor pode cometer: fingir que leu o link e inventa
             }
       )
       .map((v) => ({ ...v, text: applyHardRules(v.text) }));
+
+    // ============================================================
+    // FASE 5 (NOVA) — VERIFICAÇÃO ANTI-FABRICAÇÃO
+    //
+    // Caso real: modelo gerou "três vezes nos últimos dois meses",
+    // "200 impressões", "fevereiro desse ano" sem nada disso ter sido
+    // input do líder. REGRA ZERO no prompt foi ignorada.
+    //
+    // Solução determinística: extrai TODOS os tokens específicos do
+    // draft (números, datas, nomes próprios) e verifica se aparecem
+    // em ALGUMA fonte legítima (topic + brief + extra + must_cite_facts
+    // + learned_preferences + tone_examples + docs). Se 2+ tokens
+    // suspeitos: regenera UMA vez com instrução EXPLÍCITA de remover.
+    // ============================================================
+    const fabricationSources = {
+      topic: parsed.data.topic,
+      brief: parsed.data.brief,
+      extra_instructions: parsed.data.extra_instructions,
+      must_cite_facts: parsed.data.must_cite_facts ?? undefined,
+      learned_preferences: context.leader.learned_preferences,
+      tone_examples: context.leader.tone_examples,
+      org_docs: (context.orgDocuments ?? [])
+        .map((d) => d.content)
+        .join("\n"),
+      leader_docs: (context.leaderDocuments ?? [])
+        .map((d) => d.content)
+        .join("\n"),
+    };
+
+    type CheckedVersion = (typeof beforeFabricationCheck)[number] & {
+      fabrication_fixed?: boolean;
+      fabrication_detected?: string[];
+    };
+    const verifyAndFixFabrication = async (
+      v: (typeof beforeFabricationCheck)[number]
+    ): Promise<CheckedVersion> => {
+      const detection = detectFabricatedTokens(v.text, fabricationSources);
+      // Threshold: 2+ tokens suspeitos = sinal forte de fabricação
+      if (detection.suspicious.length < 2) return v;
+
+      // Regenera removendo os tokens fabricados
+      const fixInstructions = [
+        `Reescreva o texto removendo TODOS os tokens fabricados listados abaixo.`,
+        `Esses tokens NÃO apareceram em nenhuma fonte de input do líder (topic, brief, materiais anexados, learned_preferences, documentos).`,
+        ``,
+        `TOKENS FABRICADOS A REMOVER:`,
+        ...detection.suspicious.map((t, i) => `  ${i + 1}. "${t}"`),
+        ``,
+        `COMO REMOVER:`,
+        `- Substitua o número específico por linguagem qualitativa ("muito", "a maior parte", "dobrou", "ainda crescia")`,
+        `- Substitua a data específica por referência temporal vaga ("recentemente", "nos últimos meses")`,
+        `- Substitua o nome próprio inventado por categoria ("um cliente", "uma empresa do setor")`,
+        `- Substitua a citação inventada por paráfrase sem aspas`,
+        `- OU corte a frase inteira que dependia do token`,
+        ``,
+        `MANTENHA tudo que NÃO está na lista. Mantenha tese, estrutura, ritmo, voz do líder.`,
+        `REGRA ZERO: prefere texto mais curto e verdadeiro a texto longo com invenção.`,
+        ``,
+        `Devolva APENAS o texto reescrito. Sem preâmbulo, sem explicação.`,
+      ].join("\n");
+
+      const userPrompt = `${fixInstructions}\n\nTEXTO ORIGINAL:\n"""\n${v.text}\n"""\n\nReescreva:`;
+
+      try {
+        const anthropicLocal = getAnthropic();
+        const response = await anthropicLocal.messages.create({
+          model: FAST_MODEL,
+          max_tokens: maxTokens,
+          messages: [{ role: "user", content: userPrompt }],
+        });
+        const newText = response.content
+          .filter((b) => b.type === "text")
+          .map((b) => (b as { text: string }).text)
+          .join("\n")
+          .trim();
+        if (newText && newText.length > 50) {
+          return { ...v, text: applyHardRules(newText), fabrication_fixed: true };
+        }
+      } catch (err) {
+        console.error("[fabrication-fix] failed", err);
+      }
+      return { ...v, fabrication_detected: detection.suspicious };
+    };
+
+    const final = await Promise.all(
+      beforeFabricationCheck.map((v) => verifyAndFixFabrication(v))
+    );
 
     // ============================================================
     // Salva primary + alt_versions + plan + review no meta
