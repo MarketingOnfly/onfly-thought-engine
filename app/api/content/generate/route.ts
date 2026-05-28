@@ -190,6 +190,29 @@ export async function POST(request: NextRequest) {
       excludeId: draftId,
     });
 
+    // Se o líder anexou material que o comprehend-link FALHOU em ler
+    // (substack com paywall, cloudflare, PDF corrompido), ativamos
+    // web_search automaticamente E injetamos instrução EXPLÍCITA pro
+    // modelo NÃO INVENTAR conteúdo do material. Sem isso, o modelo
+    // gera prosa genérica fingindo que leu o link.
+    const unreadableSources = parsed.data.unreadable_sources ?? [];
+    const hasUnreadableSources = unreadableSources.length > 0;
+    const unreadableHint = hasUnreadableSources
+      ? `\n\n🚨 ATENÇÃO CRÍTICA — MATERIAIS NÃO ACESSADOS:
+O líder anexou ${unreadableSources.length} material(is) que o sistema NÃO conseguiu ler (paywall, anti-bot, PDF corrompido):
+${unreadableSources.map((s, i) => `  ${i + 1}. ${s.title}${s.url ? ` (${s.url})` : ""}`).join("\n")}
+
+REGRAS DURAS:
+1. NUNCA INVENTE o conteúdo desses materiais. Não escreva sobre o que você ACHA que está neles.
+2. USE A FERRAMENTA web_search pra buscar o material pelo título ou URL. Tente extrair o conteúdo real.
+3. Se a busca falhar OU se o líder pediu algo específico do material que você não consegue verificar (ex: "o primeiro erro mencionado", "o que o autor diz sobre X"), DEVOLVA APENAS ESTA FRASE:
+   "Não consegui acessar o material que você anexou (paywall/anti-bot). Cola o trecho específico do que você quer usar no campo de ideia e refaz."
+4. Se você buscar e encontrar, CITE EXATAMENTE o que o material diz (com aspas se for citação direta).
+5. PROIBIDO gerar prosa genérica sobre o TEMA do material. Se você não tem o conteúdo, você não escreve.
+
+Esse é o pior erro que esse motor pode cometer: fingir que leu o link e inventar. Custa credibilidade do líder. Não faça.`
+      : "";
+
     const anthropic = getAnthropic();
     const calls = variationPlans.map(async ({ moodKey, strategy }) => {
       // Cada variação A/B/C usa uma ESTRATÉGIA distinta:
@@ -201,11 +224,15 @@ export async function POST(request: NextRequest) {
         strategy
       );
 
-      const userPrompt = buildContentUserPrompt({
+      const baseUserPrompt = buildContentUserPrompt({
         format: parsed.data.format,
         topic: parsed.data.topic,
         brief: parsed.data.brief,
-        extraInstructions: parsed.data.extra_instructions ?? null,
+        // Anexa o alerta CRÍTICO de materiais ilegíveis no extra_instructions
+        // — aparece bem visível pro modelo, antes das outras instruções
+        extraInstructions:
+          (unreadableHint ? `${unreadableHint}\n\n` : "") +
+          (parsed.data.extra_instructions ?? ""),
         // Usa a escolha do planner quando o líder não forçou
         hookStyle: effectiveHookStyle,
         objective: parsed.data.objective,
@@ -216,14 +243,19 @@ export async function POST(request: NextRequest) {
         planContext: planContextForThisVariation,
         fewShot,
       });
+      const userPrompt = baseUserPrompt;
 
-      const tools = parsed.data.fact_check
+      // web_search é ATIVADO automaticamente quando:
+      //  - líder marcou fact_check=true, OU
+      //  - há materiais ilegíveis (modelo precisa buscar o conteúdo)
+      const shouldUseWebSearch = parsed.data.fact_check || hasUnreadableSources;
+      const tools = shouldUseWebSearch
         ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ([
             {
               type: "web_search_20250305",
               name: "web_search",
-              max_uses: 2,
+              max_uses: hasUnreadableSources ? 4 : 2,
             },
           ] as any)
         : undefined;

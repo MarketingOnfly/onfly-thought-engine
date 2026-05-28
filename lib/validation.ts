@@ -92,6 +92,15 @@ export const generateContentSchema = z.object({
   // O polish-pass verifica que o draft cita pelo menos UM. Se vazio,
   // sem verificação (líder não anexou material com fatos extraíveis).
   must_cite_facts: z.array(z.string()).optional().nullable(),
+  // URLs de materiais que o líder anexou MAS o sistema NÃO conseguiu
+  // ler (substack com paywall, sites com cloudflare, PDFs corrompidos).
+  // Quando essa lista vem cheia, ATIVAMOS web_search automaticamente e
+  // damos instrução EXPLÍCITA pro modelo NÃO INVENTAR conteúdo dos
+  // materiais. Se não conseguir buscar, aborta com mensagem clara.
+  unreadable_sources: z
+    .array(z.object({ url: z.string().nullable(), title: z.string() }))
+    .optional()
+    .nullable(),
 });
 
 export const reviseContentSchema = z.object({

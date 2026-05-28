@@ -333,6 +333,18 @@ export function ContextAttachments({
                           truncado
                         </span>
                       )}
+                      {a.status === "ready" &&
+                        (!a.comprehension ||
+                          a.comprehension.comprehension_failed ||
+                          a.comprehension.source_quality === "low_signal" ||
+                          (a.comprehension.key_facts?.length ?? 0) === 0) && (
+                          <span
+                            className="text-[10px] font-medium text-amber-700"
+                            title="O sistema baixou a página mas não conseguiu estruturar fatos. Geralmente paywall ou anti-bot. O motor vai tentar buscar com web_search na hora de gerar, mas se não achar, vai pedir pra você colar o trecho."
+                          >
+                            ⚠ leitura parcial
+                          </span>
+                        )}
                     </div>
                     <p className="mt-1 truncate text-sm font-medium">
                       {a.title}

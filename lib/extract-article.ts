@@ -94,6 +94,52 @@ function extractBodyText(html: string): string {
   return decodeHtmlEntities(stripTags(region));
 }
 
+/**
+ * Substack tem RSS público em <subdomain>.substack.com/feed.
+ * RSS NÃO tem paywall nem anti-bot — é texto puro com o conteúdo
+ * dos últimos posts. Quando detectamos substack na URL, tentamos
+ * RSS PRIMEIRO antes de tentar scraping HTML (que dá lixo nos
+ * vídeos pagos).
+ */
+async function trySubstackRss(url: URL): Promise<{ html: string; usedRss: boolean }> {
+  if (!url.hostname.endsWith(".substack.com")) return { html: "", usedRss: false };
+
+  try {
+    const feedUrl = `https://${url.hostname}/feed`;
+    const res = await fetch(feedUrl, {
+      headers: { "user-agent": "Mozilla/5.0 (OnflyThoughtEngine RSS Reader)" },
+    });
+    if (!res.ok) return { html: "", usedRss: false };
+    const xml = await res.text();
+
+    // Procura o item específico pelo path da URL original
+    const slug = url.pathname.split("/").filter(Boolean).pop() ?? "";
+    const itemMatch = xml.match(
+      new RegExp(
+        `<item>[\\s\\S]*?<link>[^<]*${slug.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}[^<]*</link>[\\s\\S]*?</item>`,
+        "i"
+      )
+    );
+
+    if (!itemMatch) return { html: "", usedRss: false };
+
+    // Extrai content:encoded (que tem o HTML do post completo)
+    const contentMatch = itemMatch[0].match(
+      /<content:encoded><!\[CDATA\[([\s\S]*?)\]\]><\/content:encoded>/
+    );
+    if (!contentMatch) return { html: "", usedRss: false };
+
+    const titleMatch = itemMatch[0].match(/<title><!\[CDATA\[([^\]]+)\]\]><\/title>/);
+    const title = titleMatch?.[1] ?? "";
+
+    // Monta HTML mínimo pra extractor processar
+    const html = `<html><head><title>${title}</title><meta property="og:title" content="${title}"></head><body><article>${contentMatch[1]}</article></body></html>`;
+    return { html, usedRss: true };
+  } catch {
+    return { html: "", usedRss: false };
+  }
+}
+
 export async function extractArticle(url: string): Promise<ArticleExtraction> {
   let parsed: URL;
   try {
@@ -105,34 +151,41 @@ export async function extractArticle(url: string): Promise<ArticleExtraction> {
     throw new Error("Use uma URL http(s).");
   }
 
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT);
+  // Tenta RSS pra substack ANTES de scraping (substack bloqueia bot HTML)
+  const substackTry = await trySubstackRss(parsed);
+  let html = substackTry.html;
 
-  let html: string;
-  try {
-    const res = await fetch(url, {
-      signal: ctrl.signal,
-      headers: {
-        "user-agent":
-          "Mozilla/5.0 (compatible; OnflyThoughtEngine/1.0; +https://onfly-thought-engine.vercel.app)",
-        accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      },
-      redirect: "follow",
-    });
-    if (!res.ok) {
-      throw new Error(
-        `Site respondeu ${res.status}. Pode estar bloqueando bots ou exigir login.`
-      );
+  if (!html) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT);
+
+    try {
+      const res = await fetch(url, {
+        signal: ctrl.signal,
+        headers: {
+          // Pretende ser browser real — alguns sites bloqueiam user-agent custom
+          "user-agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          accept:
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+          "accept-language": "pt-BR,pt;q=0.9,en;q=0.8",
+        },
+        redirect: "follow",
+      });
+      if (!res.ok) {
+        throw new Error(
+          `Site respondeu ${res.status}. Pode estar bloqueando bots ou exigir login.`
+        );
+      }
+      html = await res.text();
+    } catch (err) {
+      if ((err as { name?: string }).name === "AbortError") {
+        throw new Error("Site demorou demais pra responder (>12s).");
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
     }
-    html = await res.text();
-  } catch (err) {
-    if ((err as { name?: string }).name === "AbortError") {
-      throw new Error("Site demorou demais pra responder (>12s).");
-    }
-    throw err;
-  } finally {
-    clearTimeout(timer);
   }
 
   const title = extractTitle(html, url);

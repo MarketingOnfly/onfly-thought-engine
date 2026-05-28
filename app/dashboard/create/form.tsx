@@ -211,6 +211,20 @@ export default function CreateForm({
       .flatMap((a) => a.comprehension?.key_facts ?? [])
       .slice(0, 12);
 
+    // Lista de materiais que o líder anexou MAS o comprehend falhou em ler
+    // (substack com paywall, cloudflare, etc). O backend ATIVA web_search
+    // automaticamente nesses casos e instrui modelo a NÃO INVENTAR.
+    const unreadableSources = attachments
+      .filter(
+        (a) =>
+          a.status === "ready" &&
+          (!a.comprehension ||
+            a.comprehension.comprehension_failed ||
+            a.comprehension.source_quality === "low_signal" ||
+            (a.comprehension.key_facts?.length ?? 0) === 0)
+      )
+      .map((a) => ({ url: a.url, title: a.title }));
+
     const res = await apiFetch<{ draft: ContentDraft }>("/api/content/generate", {
       method: "POST",
       body: JSON.stringify({
@@ -227,6 +241,7 @@ export default function CreateForm({
         mood,
         fact_check: factCheck,
         must_cite_facts: mustCiteFacts.length ? mustCiteFacts : null,
+        unreadable_sources: unreadableSources.length ? unreadableSources : null,
       }),
     });
     setBusy(false);
