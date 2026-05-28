@@ -101,14 +101,11 @@ export async function POST(request: NextRequest) {
   // ============================================================
   // BARREIRA ANTI-FABRICAÇÃO (REGRA ZERO em código)
   //
-  // Caso real do Vini: anexou link substack pedindo "o primeiro erro
-  // do texto", motor leu pouco/nada, INVENTOU outro erro plausível.
-  // Mesmo com REGRA ZERO no prompt, modelo ainda inventou.
-  //
-  // Solução cirúrgica: se o líder pediu algo ESPECÍFICO de material
-  // ("o primeiro erro mencionado", "o que o autor diz") E o sistema
-  // NÃO CONSEGUIU LER o(s) material(is), abortamos ANTES de chamar o
-  // LLM. Erro 422 explicando que precisa colar o trecho.
+  // Quando o líder pede algo ESPECÍFICO de um material que o sistema
+  // NÃO conseguiu ler (paywall, anti-bot), abortamos ANTES de chamar
+  // o LLM. Erro 422 explicando que precisa colar o trecho.
+  // Padrões de pedido específico: referências ao conteúdo do material
+  // (ordinal + termo, "do texto", citação, autoria, comando direto).
   //
   // Sem essa barreira, o LLM SEMPRE tem o caminho fácil de "fingir
   // que sabe" — porque tem tokens latentes do tema. A única forma de
@@ -131,8 +128,8 @@ export async function POST(request: NextRequest) {
     /\b(d[oa]|n[oa])\s+(text|link|artig|post|vídeo|video|podcast|matéria|noticia|notícia|reportagem|paper|entrevista|reportagem|episódio|episodio|live|conteúd)/i,
     // palavras de citação
     /\b(mencionad|citad|dit[ao]|comentad|destacad|afirmad)/i,
-    // "que o autor / fulano disse"
-    /\b(que\s+o\s+(autor|pierre|fulano|ele|ela)\s+(diz|fala|menciona|cita|defende|comenta|destaca|escreve|argumenta))/i,
+    // "que o autor / ele / ela disse"
+    /\b(que\s+(o\s+)?(autor|ele|ela|autora|autor[ae]s)\s+(diz|fala|menciona|cita|defende|comenta|destaca|escreve|argumenta))/i,
     // pede pra "comentar sobre" o material
     /\b(comentar?|reagir?|responder?|escrever?)\s+(sobre|d[oa])\s+(text|link|artig|post|vídeo|matéria|esse|aquilo)/i,
   ];
@@ -196,7 +193,7 @@ export async function POST(request: NextRequest) {
       .join("\n");
     return NextResponse.json(
       {
-        error: `Você pediu algo específico do material anexado (ex: "o primeiro erro mencionado"), mas o sistema NÃO conseguiu ler o conteúdo nem com a busca direta do Claude. Materiais com leitura falhada:\n\n${sourceList}\n\nGeralmente é paywall completo (Substack/Medium pago), site privado, ou link 404. Pra evitar que o motor invente conteúdo: cole o TRECHO ESPECÍFICO que você quer usar (ex: o primeiro erro do texto) no campo "Ideia" ou "Briefing" e refaz.`,
+        error: `Você pediu algo específico do material anexado, mas o sistema NÃO conseguiu ler o conteúdo nem com a busca direta do Claude. Materiais com leitura falhada:\n\n${sourceList}\n\nGeralmente é paywall completo, site privado, ou link 404. Pra evitar que o motor invente conteúdo, cole o trecho específico que você quer usar no campo "Ideia" ou "Briefing" e refaz.`,
         kind: "unreadable_material_specific_request",
         unreadable_sources: stillUnreadable,
       },
@@ -316,7 +313,7 @@ ${unreadableSources.map((s, i) => `  ${i + 1}. ${s.title}${s.url ? ` (${s.url})`
 REGRAS DURAS:
 1. NUNCA INVENTE o conteúdo desses materiais. Não escreva sobre o que você ACHA que está neles.
 2. USE A FERRAMENTA web_search pra buscar o material pelo título ou URL. Tente extrair o conteúdo real.
-3. Se a busca falhar OU se o líder pediu algo específico do material que você não consegue verificar (ex: "o primeiro erro mencionado", "o que o autor diz sobre X"), DEVOLVA APENAS ESTA FRASE:
+3. Se a busca falhar OU se o líder pediu algo específico do material que você não consegue verificar (referência direta ao conteúdo do material), DEVOLVA APENAS ESTA FRASE:
    "Não consegui acessar o material que você anexou (paywall/anti-bot). Cola o trecho específico do que você quer usar no campo de ideia e refaz."
 4. Se você buscar e encontrar, CITE EXATAMENTE o que o material diz (com aspas se for citação direta).
 5. PROIBIDO gerar prosa genérica sobre o TEMA do material. Se você não tem o conteúdo, você não escreve.
@@ -352,7 +349,7 @@ Esse é o pior erro que esse motor pode cometer: fingir que leu o link e inventa
         fewShot,
         // NOVO: passa os fatos extraídos do material como FOCO OBRIGATÓRIO
         // no topo do user prompt. Sem isso, modelo escreve sobre outro
-        // tema mesmo com material lido (caso real do Vini com Pierre Hérubel).
+        // tema mesmo com material lido.
         mustCiteFacts: parsed.data.must_cite_facts ?? undefined,
       });
       const userPrompt = baseUserPrompt;

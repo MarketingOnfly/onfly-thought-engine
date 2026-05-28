@@ -369,7 +369,7 @@ export function ContextAttachments({
           <Input
             value={snippetTitle}
             onChange={(e) => setSnippetTitle(e.target.value)}
-            placeholder="Título / origem do trecho (ex: Post do Pierre Hérubel)"
+            placeholder="Título / origem do trecho"
             className="text-sm"
           />
           <textarea
