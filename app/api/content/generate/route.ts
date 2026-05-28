@@ -9,7 +9,7 @@ import {
 import { generateContentSchema } from "@/lib/validation";
 import { CONTENT_LENGTHS, MOOD_VARIATIONS } from "@/lib/style-presets";
 import { planContent, planAsPromptContext } from "@/lib/anthropic/plan-content";
-import { polishPass } from "@/lib/anthropic/polish-pass";
+import { polishPass, applyHardRules } from "@/lib/anthropic/polish-pass";
 import { getFewShotExamples } from "@/lib/anthropic/few-shot";
 import { reviewText } from "@/lib/anthropic/review";
 import { selfRepair } from "@/lib/anthropic/self-repair";
@@ -274,9 +274,13 @@ export async function POST(request: NextRequest) {
       return { moodKey, raw };
     });
 
+    // SAFETY NET: aplica applyHardRules JÁ no draft cru. Mesmo que o
+    // polish ou self-repair falhem, o em dash não passa. Defesa em
+    // profundidade — aplicado em CADA fase do pipeline.
     const drafted = (await Promise.allSettled(calls))
       .map((r) => (r.status === "fulfilled" ? r.value : null))
-      .filter((x): x is { moodKey: string | null; raw: string } => !!x && !!x.raw);
+      .filter((x): x is { moodKey: string | null; raw: string } => !!x && !!x.raw)
+      .map((d) => ({ ...d, raw: applyHardRules(d.raw) }));
 
     if (!drafted.length) throw new Error("Todas as gerações falharam na fase de draft.");
 
@@ -299,8 +303,11 @@ export async function POST(request: NextRequest) {
 
     const polishedFinal = drafted.map((d, i) => {
       const p = polished[i];
+      // SAFETY NET 2: fallback do polish também passa por applyHardRules.
+      // O d.raw já está limpo (aplicamos acima), mas a defesa redundante
+      // protege contra qualquer reintrodução.
       const text = p.status === "fulfilled" && p.value ? p.value : d.raw;
-      return { moodKey: d.moodKey, text };
+      return { moodKey: d.moodKey, text: applyHardRules(text) };
     });
 
     // ============================================================
@@ -345,15 +352,20 @@ export async function POST(request: NextRequest) {
       })
     );
 
-    const final = critiqued.map((r, i) =>
-      r.status === "fulfilled"
-        ? r.value
-        : {
-            ...polishedFinal[i],
-            review: null as Awaited<ReturnType<typeof reviewText>>,
-            repaired: false,
-          }
-    );
+    // SAFETY NET 3 (FINAL): aplica applyHardRules em CADA versão antes
+    // de salvar no banco. Mesmo que o critique/repair tenha reintroduzido
+    // qualquer tell, o em dash não chega no editor do líder.
+    const final = critiqued
+      .map((r, i) =>
+        r.status === "fulfilled"
+          ? r.value
+          : {
+              ...polishedFinal[i],
+              review: null as Awaited<ReturnType<typeof reviewText>>,
+              repaired: false,
+            }
+      )
+      .map((v) => ({ ...v, text: applyHardRules(v.text) }));
 
     // ============================================================
     // Salva primary + alt_versions + plan + review no meta

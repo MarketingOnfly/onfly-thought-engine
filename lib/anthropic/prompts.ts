@@ -342,6 +342,67 @@ O líder atual tem voz própria (definida acima). Não copie a voz dos exemplos.
  * pra outro. A barreira entre líderes é a RLS no banco + o escopo por
  * userId nesta função.
  */
+/**
+ * Constrói uma seção de REGRAS DURAS PERSONALIZADAS quando o líder
+ * marca tone_avoid específicos. Não basta dizer "esse líder evita X"
+ * — vira um bloco com peso de instrução no topo.
+ *
+ * Esta função é chamada em separado pra ser inserida no bloco de
+ * REGRAS DURAS (não no de "calibração do líder").
+ */
+function describePersonalHardRules(profile: LeaderProfile): string {
+  const avoid = profile.tone_avoid ?? [];
+  if (!avoid.length) return "";
+
+  const lines: string[] = [];
+  if (avoid.includes("em_dashes")) {
+    lines.push(
+      "- TRAVESSÃO/EM DASH (—): este líder marcou explicitamente 'nunca usar'. ZERO em dashes no texto. Use vírgula, ponto ou dois-pontos. Esse é um item NÃO NEGOCIÁVEL do perfil dele."
+    );
+  }
+  if (avoid.includes("emoji_hooks")) {
+    lines.push(
+      "- EMOJI NO HOOK: este líder marcou 'nunca'. Zero emoji nas primeiras linhas. Se for usar emoji, só no fim, com moderação extrema."
+    );
+  }
+  if (avoid.includes("lessons_lists")) {
+    lines.push(
+      "- LISTAS DE 'X LIÇÕES': este líder NÃO escreve 'X coisas que aprendi', 'Y lições que mudaram tudo', 'N hacks'. Esse formato é proibido. Use prosa corrida ou estrutura narrativa."
+    );
+  }
+  if (avoid.includes("motivational")) {
+    lines.push(
+      "- TOM MOTIVACIONAL/COACH: este líder não escreve em tom de Instagram inspiracional. Sem 'acredite no processo', 'transforme sua jornada'. Voz direta de operador."
+    );
+  }
+  if (avoid.includes("us_jargon")) {
+    lines.push(
+      "- JARGÃO AMERICANO SEM TRADUÇÃO: este líder não usa 'synergy', 'gameplan', 'leverage', 'at the end of the day' sem traduzir. Sempre traduza ou substitua."
+    );
+  }
+  if (avoid.includes("filler")) {
+    lines.push(
+      "- FLOREIO CORPORATIVO: este líder não usa 'no fim do dia', 'no mundo dinâmico de hoje', 'em um cenário cada vez mais X'. Corte qualquer abertura genérica de essay."
+    );
+  }
+  if (avoid.includes("self_praise")) {
+    lines.push(
+      "- AUTO-ELOGIO EXPLÍCITO: este líder não escreve 'tenho orgulho do meu time', 'estamos transformando o mercado'. Substitua por fato concreto."
+    );
+  }
+  if (avoid.includes("long_sentences")) {
+    lines.push(
+      "- FRASES LONGAS: este líder marcou 'evitar'. Mantenha frases até 20 palavras. Quebra rítmica obrigatória."
+    );
+  }
+
+  if (!lines.length) return "";
+  return [
+    "REGRAS DURAS PERSONALIZADAS DESTE LÍDER (marcadas no perfil dele, não negociáveis):",
+    ...lines,
+  ].join("\n");
+}
+
 function describeLeader(profile: LeaderProfile): string {
   const traits = labelize(TONE_TRAITS, profile.tone_traits);
   const avoid = labelize(TONE_AVOID, profile.tone_avoid);
@@ -493,11 +554,15 @@ export function buildLeaderSystemPrompt(ctx: LeaderContext): string {
   );
 
   // ─── 2. REGRAS DURAS (mais importante) ─────────────────────────────────────
+  const personalHardRules = describePersonalHardRules(ctx.leader);
   sections.push(
     [
       "═══ REGRAS DURAS (NÃO NEGOCIÁVEIS) ═══",
       orgDocsContent
         ? `GUIDELINES DA ONFLY (vinculantes, precedem qualquer preferência individual):\n\n${orgDocsContent}\n\n---`
+        : "",
+      personalHardRules
+        ? `${personalHardRules}\n\n---`
         : "",
       HUMANIZER_RULES,
     ]

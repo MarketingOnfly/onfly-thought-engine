@@ -75,6 +75,15 @@ export function detectContraposicao(text: string): string[] {
     /\b(?:isso|isto|esse|este|essa|esta)\s+não\s+é\s+(?:só|apenas|somente)?\s*[^,.;]{2,40},\s+é\s/gi,
     // "não apenas X, mas (também) Y"
     /\bnão\s+apenas\s+[^,.;]{2,40},\s+mas\s+(?:também\s+)?/gi,
+    // CONTRAPOSIÇÃO ANTÔNIMA SEM "NÃO" (caso do Gui Moscardini):
+    // "Estava certo X, errado Y" / "Era bom X, ruim Y" / "Pareceu fácil, foi difícil"
+    /\b(?:estava|era|estou|sou|fui|fica|ficou|pareceu|parece|foi)\s+(?:certo|errado|bom|ruim|fácil|difícil|claro|escuro|simples|complexo|leve|pesado|rápido|lento)\s+(?:na?o?s?|em|com|sobre|de|do|da)\s+[^,.;]{1,30},\s+(?:errado|certo|bom|ruim|fácil|difícil|claro|escuro|simples|complexo|leve|pesado|rápido|lento|negação)\b/gi,
+    // CONTRAPOSIÇÃO "O QUE MUDA / O QUE NÃO MUDA" (também do Gui):
+    /\bo\s+que\s+(\w+):\s+[^.]+\.\s+o\s+que\s+não\s+\1\b/gi,
+    // "X, virou Y" / "X, virei Y" (mudança que vira contraposição)
+    /\b[A-ZÁÉÍÓÚÂÊÔÃÕÇ]?[a-záéíóúâêôãõç]+\s+[^,.;]{2,30},\s+(?:virou|virei|virava)\s+/g,
+    // "EU [verbo] X. MAS [verbo contrário]" — padrão "Eu aceitava X. Mas Y não"
+    // Esse é mais difícil de capturar sem falso positivo. Deixa só os acima.
   ];
 
   const hits: string[] = [];
@@ -87,6 +96,35 @@ export function detectContraposicao(text: string): string[] {
     }
   }
   return Array.from(new Set(hits)).slice(0, 8); // dedup + limita
+}
+
+/**
+ * Detecta TRIPLAS PARALELAS — três items separados por vírgula com
+ * estrutura paralela. A regra do skill /linkedin-vini-cmo é "máximo
+ * UMA tripla no texto inteiro". Esta função CONTA quantas existem.
+ *
+ * Heurística: padrão "X, Y, Z[.;!?]" onde cada item tem 1-5 palavras
+ * e a palavra de cada item começa com letra minúscula (= continuação,
+ * não nova frase). Filtra triplas que são claramente enumerações
+ * legítimas (números, datas).
+ */
+export function detectTriplas(text: string): string[] {
+  // Captura sequências "palavra+, palavra+, palavra+[.;!?]"
+  // Cada item: 1-5 palavras, começando com minúscula ou substantivo
+  const PATTERN =
+    /\b([a-záéíóúâêôãõç][\wáéíóúâêôãõç-]+(?:\s+[\wáéíóúâêôãõç-]+){0,4}),\s+([a-záéíóúâêôãõç][\wáéíóúâêôãõç-]+(?:\s+[\wáéíóúâêôãõç-]+){0,4}),\s+([a-záéíóúâêôãõç][\wáéíóúâêôãõç-]+(?:\s+[\wáéíóúâêôãõç-]+){0,4})\s*[.!?;]/gi;
+
+  const hits: string[] = [];
+  let match;
+  while ((match = PATTERN.exec(text)) !== null) {
+    // Filtra triplas que são só números/datas
+    const allNumbers = [match[1], match[2], match[3]].every((s) =>
+      /^\d/.test(s.trim())
+    );
+    if (allNumbers) continue;
+    hits.push(match[0].trim().slice(0, 100));
+  }
+  return hits;
 }
 
 /**
@@ -259,8 +297,15 @@ export async function polishPass(opts: {
   // Detecta contraposições paralelas no draft antes de mandar pro polish.
   const contraposicoes = detectContraposicao(opts.draft);
   const contraposicoesHint = contraposicoes.length
-    ? `\n\nALERTA — JÁ DETECTEI ${contraposicoes.length} CONTRAPOSIÇÃO(ÕES) PARALELA(S) NO DRAFT (padrão "não X, é Y"). REESCREVA CADA UMA EM DUAS FRASES SEPARADAS ANTES DE QUALQUER OUTRA EDIÇÃO:\n${contraposicoes.map((c, i) => `  ${i + 1}. "${c}..."`).join("\n")}\n`
+    ? `\n\nALERTA — JÁ DETECTEI ${contraposicoes.length} CONTRAPOSIÇÃO(ÕES) PARALELA(S) NO DRAFT (padrões "não X, é Y" / "Estava certo na X, errado na Y" / "O que muda / O que não muda"). REESCREVA CADA UMA EM DUAS FRASES SEPARADAS, OU ELIMINE UM DOS LADOS:\n${contraposicoes.map((c, i) => `  ${i + 1}. "${c}..."`).join("\n")}\n`
     : "";
+
+  // Detecta triplas paralelas — máximo UMA por texto.
+  const triplas = detectTriplas(opts.draft);
+  const triplasHint =
+    triplas.length > 1
+      ? `\n\nALERTA — DETECTEI ${triplas.length} TRIPLAS PARALELAS NO DRAFT. A regra é MÁXIMO UMA por texto. QUEBRE as outras em prosa corrida ou corte um dos itens:\n${triplas.map((t, i) => `  ${i + 1}. "${t}"`).join("\n")}\n`
+      : "";
 
   // Verifica se o draft cita algum fato dos materiais anexados.
   // Se anexou material e nenhum fato foi citado, força o polish a incluir um.
@@ -274,7 +319,7 @@ export async function polishPass(opts: {
 
   const anthropic = getAnthropic();
   const userPrompt = `Formato: ${opts.format === "linkedin_post" ? "post de LinkedIn em pt-BR" : "artigo em pt-BR"}.
-${opts.notes ? `Contexto: ${opts.notes}\n` : ""}${contraposicoesHint}${factsHint}
+${opts.notes ? `Contexto: ${opts.notes}\n` : ""}${contraposicoesHint}${triplasHint}${factsHint}
 DRAFT a polir (anti-clichê + cut 20% + sensorial):
 
 """
