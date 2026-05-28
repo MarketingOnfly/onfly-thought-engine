@@ -75,6 +75,9 @@ export interface StyleScoreDimensions {
   };
   substance: { score: number; max: 20; notes: string };
   learned_match: { score: number; max: 20; notes: string };
+  // Stickiness — vetor SEPARADO (não conta no overall). Heath SUCCESs.
+  // Aderência é "soa como o líder"; stickiness é "vai grudar?".
+  stickiness?: { score: number; max: 20; notes: string };
 }
 
 export interface StyleScore {

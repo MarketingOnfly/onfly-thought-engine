@@ -240,6 +240,7 @@ interface LlmDimensions {
   voice_match: { score: number; notes: string };
   substance: { score: number; notes: string };
   learned_match: { score: number; notes: string };
+  stickiness: { score: number; notes: string };
   matches: string[];
   gaps: string[];
 }
@@ -292,11 +293,24 @@ Quanto o texto respeita as PREFERÊNCIAS APRENDIDAS do líder (lista de "Gosta: 
 - 0: ignora todas
 - Se não houver preferências aprendidas, devolva 15 (neutro, sem dados pra avaliar).
 
+DIMENSÃO 6 — STICKINESS (Heath, "Made to Stick" SUCCESs framework — 0-20):
+O quanto o texto "GRUDA" — alguém lembra dele 24h depois? Critério SUCCESs (cada letra vale 3 pts, total 18, +2 pra excelência geral):
+- SIMPLE (0-3): UMA ideia central, não 3. Cabe na controlling idea?
+- UNEXPECTED (0-3): há virada que quebra expectativa do leitor (curiosity gap, lacuna fechada)?
+- CONCRETE (0-3): pelo menos 1 número específico, nome próprio, ou cena tangível (hora/lugar)?
+- CREDIBLE (0-3): tese tem evidência ou experiência nomeada por trás? (NÃO "estudos mostram")
+- EMOTIONAL (0-3): há tensão emocional nomeada (medo, frustração, orgulho, surpresa)?
+- STORY (0-3): há narrativa curta com sujeito, ação, consequência? (não só conselho abstrato)
+- Bônus DM-test (0-2): alguém comentaria isso com argumento próprio, mandaria no DM ou marcaria alguém?
+
+Some os pontos. Se ficou em 17+ é texto que GRUDA. Abaixo de 10 é morno.
+
 Schema de saída:
 {
   "voice_match": { "score": número 0-20, "notes": "1 frase específica explicando o número" },
   "substance": { "score": número 0-20, "notes": "1 frase específica" },
   "learned_match": { "score": número 0-20, "notes": "1 frase específica" },
+  "stickiness": { "score": número 0-20, "notes": "1 frase específica do SUCCESs (qual letra mais fraca?)" },
   "matches": ["até 4 bullets curtos do que CASOU bem"],
   "gaps": ["até 4 bullets curtos do que ESCAPOU"]
 }
@@ -376,6 +390,10 @@ Devolva o JSON com voice_match, substance, learned_match, matches, gaps.`;
       score: clampScore(parsed?.learned_match),
       notes: getNotes(parsed?.learned_match),
     },
+    stickiness: {
+      score: clampScore(parsed?.stickiness),
+      notes: getNotes(parsed?.stickiness),
+    },
     matches: Array.isArray(parsed?.matches)
       ? (parsed.matches as unknown[]).map(String).slice(0, 4)
       : [],
@@ -403,6 +421,11 @@ export interface ScoreDimensions {
   };
   substance: { score: number; max: 20; notes: string };
   learned_match: { score: number; max: 20; notes: string };
+  // STICKINESS (Heath SUCCESs) — vetor SEPARADO do overall (que continua
+  // sendo soma das 5 dimensões de aderência ao estilo). Aderência é "soa
+  // como o líder"; stickiness é "vai grudar na cabeça?". Perguntas
+  // diferentes, mostradas em paralelo.
+  stickiness?: { score: number; max: 20; notes: string };
 }
 
 export async function scoreStyle(opts: {
@@ -433,6 +456,7 @@ export async function scoreStyle(opts: {
     },
     substance: { score: llm.substance.score, max: 20, notes: llm.substance.notes },
     learned_match: { score: llm.learned_match.score, max: 20, notes: llm.learned_match.notes },
+    stickiness: { score: llm.stickiness.score, max: 20, notes: llm.stickiness.notes },
   };
 
   const overall =

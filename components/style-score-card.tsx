@@ -445,6 +445,10 @@ function DimensionsBreakdown({ dimensions }: { dimensions: StyleScoreDimensions 
     },
   ];
 
+  // Stickiness — vetor separado, mostrado abaixo como indicador
+  // independente (não soma no overall).
+  const stickiness = dimensions.stickiness;
+
   return (
     <div className="mt-4 space-y-2.5 rounded-2xl border border-border bg-secondary/30 p-4">
       <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -483,6 +487,45 @@ function DimensionsBreakdown({ dimensions }: { dimensions: StyleScoreDimensions 
           );
         })}
       </div>
+
+      {stickiness && (
+        <div className="mt-4 border-t border-border pt-3">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Stickiness (vai grudar na cabeça?) — SUCCESs de Heath, vetor separado
+          </p>
+          <div className="mt-2">
+            <div className="flex items-baseline justify-between gap-2 text-xs">
+              <span className="font-medium text-foreground">
+                Memorabilidade
+              </span>
+              <span className="font-mono text-muted-foreground">
+                {stickiness.score}
+                <span className="text-foreground/40">/{stickiness.max}</span>
+              </span>
+            </div>
+            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-secondary">
+              <div
+                className={cn(
+                  "h-full transition-all",
+                  (stickiness.score / stickiness.max) * 100 >= 80
+                    ? "bg-brand-500"
+                    : (stickiness.score / stickiness.max) * 100 >= 55
+                      ? "bg-amber-500"
+                      : "bg-destructive"
+                )}
+                style={{
+                  width: `${(stickiness.score / stickiness.max) * 100}%`,
+                }}
+              />
+            </div>
+            {stickiness.notes && (
+              <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
+                {stickiness.notes}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

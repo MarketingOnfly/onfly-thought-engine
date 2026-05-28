@@ -7,6 +7,10 @@
 import { getAnthropic, MODEL } from "@/lib/anthropic/client";
 import type { LeaderProfile } from "@/lib/db/types";
 import { CONTENT_TYPES, HOOK_STYLES } from "@/lib/style-presets";
+import {
+  NARRATIVE_FRAMEWORKS,
+  frameworksForPlanner,
+} from "@/lib/anthropic/narrative-frameworks";
 
 export interface ContentPlan {
   audience_specific: string;
@@ -23,6 +27,15 @@ export interface ContentPlan {
   recommended_content_type: string | null;
   hook_rationale: string | null;
   content_type_rationale: string | null;
+  // NOVO: framework narrativo escolhido (McKee/Heath/Bly/Miller).
+  // O draft Sonnet recebe a estrutura COMPLETA do framework e segue.
+  // Misturar frameworks gera lama — por isso UMA escolha.
+  narrative_framework: string | null;
+  framework_rationale: string | null;
+  // NOVO: a tese central em 1 frase declarativa (McKee Controlling Idea).
+  // Cabe em uma linha do LinkedIn. Se o post não cabe nessa frase, não
+  // tem foco.
+  controlling_idea: string | null;
 }
 
 const HOOK_OPTIONS_TEXT = HOOK_STYLES.map(
@@ -57,6 +70,25 @@ ${HOOK_OPTIONS_TEXT}
 CONTENT TYPES DISPONÍVEIS:
 ${CONTENT_TYPE_OPTIONS_TEXT}
 
+Você também ESCOLHE UM FRAMEWORK NARRATIVO entre estas opções (NUNCA misture dois):
+${frameworksForPlanner()}
+
+Critérios de escolha do framework:
+- Bastidor / aprendizado com virada → story_arc
+- Mudar opinião sobre prática consensual → pas (Problem-Agitate-Solve)
+- Mostrar transformação operacional → bab (Before-After-Bridge)
+- Hot take com lastro técnico → contrarian_structured
+- Jornada de educação técnica → story_brand_sb7
+- Caso curto + tese (não pitch) → hook_story_offer
+- Notícia recente (24-48h) com leitura diferenciada → newsjacking_take
+- Erro pessoal com número específico → expensive_lesson
+
+Você também FORMULA A CONTROLLING IDEA (McKee): tese central em UMA frase declarativa que cabe em 1 linha do LinkedIn. Sem isso, post vira essay sem foco.
+- DECLARATIVA: afirma, não pergunta
+- UMA ideia central, NÃO duas
+- Cabe em 15 palavras ou menos
+- Exemplos: "Performance pura virou dependência de canal pago." / "Memória de marca em B2B rende juros compostos." / "Cargo errado consome caixa silenciosamente."
+
 Devolva JSON puro com:
 {
   "audience_specific": "string — quem é o leitor IDEAL desse post (cargo + momento + dor). Específico, não 'profissionais B2B'.",
@@ -69,14 +101,18 @@ Devolva JSON puro com:
   "recommended_hook_style": "string — APENAS o key (ex: 'number_punch', 'contradiction'). Escolha 1 das opções listadas acima que melhor cabe na ideia.",
   "recommended_content_type": "string — APENAS o key (ex: 'learnings', 'newsjacking'). Escolha 1 das opções listadas acima que melhor cabe na ideia.",
   "hook_rationale": "string curta — 1 frase explicando POR QUE esse hook style cabe nessa ideia específica.",
-  "content_type_rationale": "string curta — 1 frase explicando POR QUE esse content type cabe nessa ideia específica."
+  "content_type_rationale": "string curta — 1 frase explicando POR QUE esse content type cabe nessa ideia específica.",
+  "narrative_framework": "string — APENAS o key do framework escolhido (story_arc, pas, bab, contrarian_structured, story_brand_sb7, hook_story_offer, newsjacking_take, expensive_lesson).",
+  "framework_rationale": "string — 1 frase explicando POR QUE esse framework cabe nessa ideia.",
+  "controlling_idea": "string — a tese central em UMA frase declarativa, até 15 palavras, que cabe numa linha do LinkedIn."
 }
 
 Critérios:
 - Plano deve ser ESPECÍFICO o suficiente pra a execução não ter ambiguidade.
 - Se key_facts for vazio, escreve um placeholder ("verificar via web_search ou substituir por experiência operacional do líder").
 - mood_signature é única em cada plano, não um clichê.
-- recommended_hook_style e recommended_content_type SEMPRE preenchidos com um dos keys válidos.`;
+- recommended_hook_style e recommended_content_type SEMPRE preenchidos com um dos keys válidos.
+- narrative_framework SEMPRE preenchido. controlling_idea SEMPRE preenchida.`;
 
 function tryParse(text: string): Partial<ContentPlan> | null {
   const trimmed = text.trim();
@@ -132,6 +168,7 @@ NUNCA ESCREVE: ${opts.leader.tone_avoid.join(", ")}.`;
   // Valida que as recomendações batem com keys válidos das constantes
   const validHookKeys = new Set<string>(HOOK_STYLES.map((h) => h.key));
   const validContentKeys = new Set<string>(CONTENT_TYPES.map((c) => c.key));
+  const validFrameworkKeys = new Set<string>(NARRATIVE_FRAMEWORKS.map((f) => f.key));
   const recommendedHook =
     parsed?.recommended_hook_style &&
     validHookKeys.has(parsed.recommended_hook_style as string)
@@ -142,6 +179,11 @@ NUNCA ESCREVE: ${opts.leader.tone_avoid.join(", ")}.`;
     validContentKeys.has(parsed.recommended_content_type as string)
       ? (parsed.recommended_content_type as string)
       : null;
+  const narrativeFramework =
+    parsed?.narrative_framework &&
+    validFrameworkKeys.has(parsed.narrative_framework as string)
+      ? (parsed.narrative_framework as string)
+      : "story_arc"; // default conservador
 
   return {
     audience_specific:
@@ -160,12 +202,29 @@ NUNCA ESCREVE: ${opts.leader.tone_avoid.join(", ")}.`;
     recommended_content_type: recommendedContent,
     hook_rationale: parsed?.hook_rationale?.toString() ?? null,
     content_type_rationale: parsed?.content_type_rationale?.toString() ?? null,
+    narrative_framework: narrativeFramework,
+    framework_rationale: parsed?.framework_rationale?.toString() ?? null,
+    controlling_idea: parsed?.controlling_idea?.toString() ?? null,
   };
 }
 
 export function planAsPromptContext(plan: ContentPlan): string {
   const lines = [
     "PLANO ESTRATÉGICO (já aprovado, siga ao pé da letra):",
+  ];
+
+  // CONTROLLING IDEA (McKee) — primeiro de tudo. Sem isso o post vira essay.
+  if (plan.controlling_idea) {
+    lines.push(
+      "",
+      `🎯 CONTROLLING IDEA (a tese central do post, em UMA frase):`,
+      `   "${plan.controlling_idea}"`,
+      `   Tudo no texto serve a defender essa frase. Se um parágrafo não puxa pra ela, corta.`,
+      ""
+    );
+  }
+
+  lines.push(
     `- Audiência específica: ${plan.audience_specific}`,
     `- Tensão central: ${plan.tension}`,
     `- Fatos concretos a usar: ${plan.key_facts.map((f) => `· ${f}`).join("\n  ") || "(nenhum, use experiência operacional)"}`,
@@ -173,8 +232,30 @@ export function planAsPromptContext(plan: ContentPlan): string {
     `- Imagens sensoriais (USE pelo menos 2 dessas no texto):`,
     `  ${plan.sensory_imagery.map((i) => `· ${i}`).join("\n  ") || "(sem imagens, invente algo concreto)"}`,
     `- Intenção do fechamento: ${plan.closing_intent}`,
-    `- Assinatura de humor: ${plan.mood_signature}`,
-  ];
+    `- Assinatura de humor: ${plan.mood_signature}`
+  );
+
+  // FRAMEWORK NARRATIVO ESCOLHIDO (importação tardia pra evitar ciclo)
+  if (plan.narrative_framework) {
+    const fw = NARRATIVE_FRAMEWORKS.find((f) => f.key === plan.narrative_framework);
+    if (fw) {
+      lines.push(
+        "",
+        `📐 FRAMEWORK NARRATIVO OBRIGATÓRIO: ${fw.label}`,
+        `   Quando faz sentido: ${fw.when_to_use}`,
+        ...(plan.framework_rationale
+          ? [`   Por quê escolhi: ${plan.framework_rationale}`]
+          : []),
+        "   ESTRUTURA (siga ordem, não misture com outros frameworks):",
+        ...fw.structure.map((s) => `     ${s}`),
+        `   Exemplo de hook: "${fw.example_hook}"`,
+        `   Exemplo de close: "${fw.example_close}"`,
+        `   ANTI-PADRÃO: ${fw.anti_pattern}`,
+        ""
+      );
+    }
+  }
+
   if (plan.recommended_hook_style && plan.hook_rationale) {
     const h = HOOK_STYLES.find(
       (x) => x.key === (plan.recommended_hook_style as (typeof HOOK_STYLES)[number]["key"])
