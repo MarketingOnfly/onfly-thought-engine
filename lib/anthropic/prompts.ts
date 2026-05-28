@@ -1013,6 +1013,11 @@ export function buildContentUserPrompt(opts: {
   mood?: "best_day" | "critical" | "reflective" | null;
   planContext?: string | null; // resultado de planAsPromptContext()
   fewShot?: string | null; // posts anteriores do próprio líder de alto desempenho
+  // NOVO: quando o líder anexou material e a leitura extraiu fatos,
+  // estes são INJETADOS NO TOPO do user prompt como FOCO OBRIGATÓRIO.
+  // Sem isso, o modelo lê os attachments como "contexto" e escreve
+  // sobre outro tema. Com isso, o post É OBRIGATORIAMENTE sobre os fatos.
+  mustCiteFacts?: string[];
 }): string {
   const formatRules =
     opts.format === "linkedin_post" ? POST_GUIDELINES : ARTICLE_GUIDELINES;
@@ -1074,9 +1079,36 @@ export function buildContentUserPrompt(opts: {
 
   const planBlock = opts.planContext ? `\n${opts.planContext}\n` : "";
 
+  // FOCO OBRIGATÓRIO: quando o líder anexou material e a leitura
+  // extraiu fatos, o post DEVE girar em torno deles. Sem essa
+  // instrução no topo, o modelo vê os fatos como "contexto" no
+  // attachmentsToPromptBlock e escreve sobre outro tema.
+  const facts = opts.mustCiteFacts ?? [];
+  const focusBlock =
+    facts.length > 0
+      ? [
+          "🎯 FOCO OBRIGATÓRIO DO POST (baseado em material lido pelo líder)",
+          "",
+          "ESTE POST DEVE SER SOBRE OS FATOS LISTADOS ABAIXO.",
+          "O líder anexou material específico esperando que o post fale sobre o conteúdo dele.",
+          "Se você ignorar esses fatos e escrever sobre outro tema, o material lido foi desperdiçado.",
+          "",
+          "Fatos centrais (escolha 1-2 pra ancorar o post):",
+          ...facts.slice(0, 8).map((f, i) => `  ${i + 1}. ${f}`),
+          "",
+          "REGRA DURA:",
+          "- O hook DEVE referenciar o tema central destes fatos.",
+          "- O corpo DEVE desenvolver pelo menos UM desses fatos com perspectiva autoral do líder.",
+          "- Se o tema dos fatos não combina com o perfil do líder (off-topic), reescreva fazendo a PONTE explícita entre o fato e a tese do líder.",
+          "- NUNCA gere post genérico sobre o tema do material. SEMPRE ancore em fato específico listado.",
+          "",
+        ].join("\n")
+      : "";
+
   return [
     `TAREFA: produzir um ${opts.format === "linkedin_post" ? "POST DE LINKEDIN" : "ARTIGO DE AUTORIDADE"} sobre o tema abaixo, assinado pelo líder descrito no system prompt.`,
     "",
+    focusBlock, // PRIMEIRO no user prompt quando há facts
     `TEMA: ${opts.topic}`,
     lengthHint,
     objectiveHint,

@@ -17,6 +17,7 @@ import {
   polishPass,
   applyHardRules,
   detectFabricatedTokens,
+  verifyFactsCited,
 } from "@/lib/anthropic/polish-pass";
 import { getFewShotExamples } from "@/lib/anthropic/few-shot";
 import { reviewText } from "@/lib/anthropic/review";
@@ -338,12 +339,9 @@ Esse é o pior erro que esse motor pode cometer: fingir que leu o link e inventa
         format: parsed.data.format,
         topic: parsed.data.topic,
         brief: parsed.data.brief,
-        // Anexa o alerta CRÍTICO de materiais ilegíveis no extra_instructions
-        // — aparece bem visível pro modelo, antes das outras instruções
         extraInstructions:
           (unreadableHint ? `${unreadableHint}\n\n` : "") +
           (parsed.data.extra_instructions ?? ""),
-        // Usa a escolha do planner quando o líder não forçou
         hookStyle: effectiveHookStyle,
         objective: parsed.data.objective,
         contentType: effectiveContentType,
@@ -352,6 +350,10 @@ Esse é o pior erro que esse motor pode cometer: fingir que leu o link e inventa
         mood: moodKey as "best_day" | "critical" | "reflective" | null,
         planContext: planContextForThisVariation,
         fewShot,
+        // NOVO: passa os fatos extraídos do material como FOCO OBRIGATÓRIO
+        // no topo do user prompt. Sem isso, modelo escreve sobre outro
+        // tema mesmo com material lido (caso real do Vini com Pierre Hérubel).
+        mustCiteFacts: parsed.data.must_cite_facts ?? undefined,
       });
       const userPrompt = baseUserPrompt;
 
@@ -410,6 +412,82 @@ Esse é o pior erro que esse motor pode cometer: fingir que leu o link e inventa
       .map((d) => ({ ...d, raw: applyHardRules(d.raw) }));
 
     if (!drafted.length) throw new Error("Todas as gerações falharam na fase de draft.");
+
+    // ============================================================
+    // FASE 2.5 (NOVA) — VERIFICAÇÃO DE ALINHAMENTO COM MATERIAL
+    //
+    // Caso real: líder anexa link, web_fetch extrai key_facts, mas o
+    // draft IGNORA esses fatos e fala de outro tema (mesmo do perfil
+    // do líder). Pipeline anterior não pegava isso.
+    //
+    // Solução: verifyFactsCited checa se o draft contém pelo menos UM
+    // termo significativo dos must_cite_facts. Se NÃO contém, regenera
+    // a variação com user prompt agressivo citando o fato OBRIGATÓRIO.
+    // ============================================================
+    const factsToCite = parsed.data.must_cite_facts ?? [];
+    if (factsToCite.length > 0) {
+      const realignDraft = async (
+        d: (typeof drafted)[number]
+      ): Promise<(typeof drafted)[number]> => {
+        const check = verifyFactsCited(d.raw, factsToCite);
+        if (check.citedAny) return d; // OK, cita ao menos um fato
+
+        // Não cita nenhum → regenera com instrução agressiva
+        console.warn(
+          "[generate] draft ignorou material; regenerando com FOCO OBRIGATÓRIO mais agressivo"
+        );
+        const realignPrompt = [
+          "🚨 GERAÇÃO ANTERIOR FALHOU EM USAR O MATERIAL DO LÍDER 🚨",
+          "",
+          "O líder anexou material específico e o draft anterior IGNOROU completamente.",
+          "Você TEM que reescrever um post que TENHA como tema central os fatos abaixo:",
+          "",
+          ...factsToCite.slice(0, 5).map((f, i) => `${i + 1}. ${f}`),
+          "",
+          "REGRAS DURAS:",
+          "- O HOOK do post DEVE referenciar o tema central destes fatos.",
+          "- O CORPO DEVE desenvolver pelo menos UM desses fatos com perspectiva autoral do líder.",
+          "- Cite explicitamente nome próprio / número / termo específico de algum desses fatos.",
+          "- NUNCA escreva post genérico que IGNORA esses fatos. O líder NÃO QUER outro tema.",
+          "",
+          "DRAFT ANTERIOR (REJEITADO porque ignorou o material):",
+          `"""\n${d.raw}\n"""`,
+          "",
+          "REESCREVA o post inteiro com FOCO nos fatos acima.",
+        ].join("\n");
+
+        try {
+          const anthropic = getAnthropic();
+          const response = await anthropic.messages.create({
+            model: FAST_MODEL,
+            max_tokens: maxTokens,
+            system: [
+              {
+                type: "text",
+                text: systemPrompt,
+                cache_control: { type: "ephemeral" },
+              },
+            ],
+            messages: [{ role: "user", content: realignPrompt }],
+          });
+          const newRaw = response.content
+            .filter((b) => b.type === "text")
+            .map((b) => (b as { text: string }).text)
+            .join("\n")
+            .trim();
+          if (newRaw && newRaw.length > 50) {
+            return { ...d, raw: applyHardRules(newRaw) };
+          }
+        } catch (err) {
+          console.error("[generate] realign failed", err);
+        }
+        return d;
+      };
+
+      const realigned = await Promise.all(drafted.map((d) => realignDraft(d)));
+      drafted.length = 0;
+      drafted.push(...realigned);
+    }
 
     // ============================================================
     // FASE 3 — POLISH (Sonnet, N paralelas: anti-clichê + cut + sensorial)
