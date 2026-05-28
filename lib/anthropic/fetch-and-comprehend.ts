@@ -18,18 +18,23 @@
 import { getAnthropic, FAST_MODEL } from "@/lib/anthropic/client";
 import type { LinkComprehension, KeyQuote } from "@/lib/anthropic/comprehend-link";
 
-const SYSTEM_PROMPT = `Você é um leitor crítico que extrai fatos de URLs. Use a ferramenta web_search pra ACESSAR a URL específica que o usuário fornecer e ler o conteúdo dela. Depois, devolva JSON puro com os fatos.
+const SYSTEM_PROMPT = `Você é um leitor crítico que extrai fatos de URLs. Você tem UMA das seguintes ferramentas disponíveis:
+- web_fetch: faz FETCH REAL da URL específica (preferido — pega HTML completo da página).
+- web_search: faz BUSCA (Bing-like), retorna snippets. Use só se web_fetch não funcionar pra essa URL.
+
+Sua tarefa: usar a tool disponível pra acessar a URL fornecida pelo usuário e extrair fatos do conteúdo. Devolva JSON puro com os fatos.
 
 🔒 REGRA ZERO: NUNCA INVENTE NADA.
 - Se a URL não puder ser acessada (privada, removida, bloqueada, paywall completo): devolva key_facts: [] e source_quality: "low_signal" com comprehension_failed: true.
-- Se acessou MAS o conteúdo é pobre (só meta-tag SEO, página de erro, paywall mostrando só intro): também devolva comprehension_failed: true.
+- Se acessou MAS o conteúdo é pobre (só meta-tag SEO, página de erro, paywall mostrando só intro, snippet de busca sem conteúdo): também devolva comprehension_failed: true.
 - SÓ preencha key_facts/key_quotes/named_entities com o que está LITERALMENTE no conteúdo que você LEU.
 - PREFIRA arrays vazios a fatos inventados.
+- NÃO escreva mensagens conversacionais ("não consegui acessar...", "preciso de mais contexto..."). DEVOLVA APENAS O JSON.
 
 USO DA TOOL:
-- Use web_search pra acessar a URL EXATA fornecida. Faça query tipo: "site:URL_DOMAIN URL_SLUG" ou pesquise pelo título do post se você conseguir inferir.
-- Se a primeira busca não trouxer o conteúdo, faça uma 2ª busca mais específica (citação direta do título do post, palavras-chave do slug).
-- Máximo 3 buscas. Se não achar, devolva comprehension_failed: true.
+- Se web_fetch disponível: faça fetch direto da URL fornecida. Lê o HTML/markdown completo. Esse é o caminho preferido — vai resolver substack, blog, qualquer URL pública.
+- Se cair pra web_search: faça query tipo "site:URL_DOMAIN URL_SLUG" ou cite o título do post se inferir. Snippets são limitados — se não vier conteúdo útil, devolva comprehension_failed: true.
+- Máximo 3 chamadas de tool. Se ainda não achar, comprehension_failed: true.
 
 Schema do JSON de saída:
 {
@@ -90,39 +95,62 @@ Se NÃO conseguir acessar (paywall total, página vazia, 404): devolve JSON com 
 
 NUNCA INVENTE. Só preenche o que VOCÊ LEU de verdade.`;
 
-  let response;
-  try {
-    response = await anthropic.messages.create({
+  // Estratégia: tenta primeiro com web_fetch_20250910 (faz FETCH real da
+  // URL, não só busca). Se a Anthropic não suporta esse tool no modelo,
+  // cai pro web_search_20250305 (busca, menos eficaz mas existe).
+  async function callWithTool(toolType: string, toolName: string) {
+    return await anthropic.messages.create({
       model: FAST_MODEL,
       max_tokens: 3500,
       system: SYSTEM_PROMPT,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       tools: [
         {
-          type: "web_search_20250305",
-          name: "web_search",
+          type: toolType,
+          name: toolName,
           max_uses: 3,
         },
       ] as any,
       messages: [{ role: "user", content: userPrompt }],
     });
-  } catch (err) {
-    console.error("[fetch-and-comprehend] anthropic call failed", err);
-    return {
-      comprehension: {
-        headline: opts.hintTitle ?? "Material",
-        publication: null,
-        main_argument: "Falha técnica ao chamar o modelo de leitura.",
-        key_facts: [],
-        key_quotes: [],
-        named_entities: [],
-        ai_pattern_warnings: [],
-        source_quality: "low_signal",
-        comprehension_failed: true,
-      },
-      rawText: "",
-    };
   }
+
+  let response;
+  let toolUsed: "web_fetch" | "web_search" = "web_fetch";
+  try {
+    // PRIMEIRA TENTATIVA: web_fetch_20250910 (fetch real da URL)
+    response = await callWithTool("web_fetch_20250910", "web_fetch");
+  } catch (errFetch) {
+    console.warn(
+      "[fetch-and-comprehend] web_fetch unavailable, trying web_search",
+      errFetch instanceof Error ? errFetch.message : errFetch
+    );
+    try {
+      // FALLBACK: web_search_20250305 (busca em vez de fetch — menos eficaz)
+      response = await callWithTool("web_search_20250305", "web_search");
+      toolUsed = "web_search";
+    } catch (errSearch) {
+      console.error(
+        "[fetch-and-comprehend] both tools failed",
+        errSearch instanceof Error ? errSearch.message : errSearch
+      );
+      return {
+        comprehension: {
+          headline: opts.hintTitle ?? "Material",
+          publication: null,
+          main_argument: "—",
+          key_facts: [],
+          key_quotes: [],
+          named_entities: [],
+          ai_pattern_warnings: [],
+          source_quality: "low_signal",
+          comprehension_failed: true,
+        },
+        rawText: "",
+      };
+    }
+  }
+  console.log(`[fetch-and-comprehend] used tool: ${toolUsed}`);
 
   // Junta todo o texto retornado (pode vir misturado com tool_use blocks)
   const textParts = response.content
@@ -133,11 +161,18 @@ NUNCA INVENTE. Só preenche o que VOCÊ LEU de verdade.`;
   const parsed = tryParse(fullText);
 
   if (!parsed) {
+    // BUG ANTERIOR: aqui retornávamos fullText (a resposta meta do modelo
+    // tipo "não consegui acessar..."), e essa string virava o text do
+    // anexo. Isso depois ia pro pipeline de polish que tentava POLIR a
+    // mensagem de erro, resultando em "isto não é um rascunho de post,
+    // é mensagem do sistema pedindo contexto".
+    // Agora: rawText fica VAZIO quando comprehension falha. Anexo é
+    // marcado como ilegível e segue o fluxo de unreadable_sources.
     return {
       comprehension: {
         headline: opts.hintTitle ?? "Material",
         publication: null,
-        main_argument: "Não consegui estruturar a leitura da URL.",
+        main_argument: "—",
         key_facts: [],
         key_quotes: [],
         named_entities: [],
@@ -145,7 +180,7 @@ NUNCA INVENTE. Só preenche o que VOCÊ LEU de verdade.`;
         source_quality: "low_signal",
         comprehension_failed: true,
       },
-      rawText: fullText,
+      rawText: "",
     };
   }
 
@@ -182,18 +217,28 @@ NUNCA INVENTE. Só preenche o que VOCÊ LEU de verdade.`;
     comprehension_failed: !!parsed.comprehension_failed,
   };
 
-  // Monta texto cru de exibição a partir dos fatos extraídos
-  const rawText = [
-    comprehension.headline,
-    comprehension.publication ? `Publicação: ${comprehension.publication}` : "",
-    `\nTese central: ${comprehension.main_argument}`,
-    "\nFatos extraídos:",
-    ...comprehension.key_facts.map((f, i) => `${i + 1}. ${f}`),
-    comprehension.key_quotes.length > 0 ? "\nCitações:" : "",
-    ...comprehension.key_quotes.map((q) => `— ${q.who}: "${q.quote}"`),
-  ]
-    .filter(Boolean)
-    .join("\n");
+  // Monta texto cru de exibição a partir dos fatos extraídos.
+  // IMPORTANTE: se comprehension_failed ou key_facts vazio, rawText
+  // fica vazio. Nunca devolvemos prosa do modelo como "rawText" porque
+  // isso confundia o pipeline (polish achava que era rascunho).
+  const rawText =
+    comprehension.comprehension_failed || comprehension.key_facts.length === 0
+      ? ""
+      : [
+          comprehension.headline,
+          comprehension.publication
+            ? `Publicação: ${comprehension.publication}`
+            : "",
+          `\nTese central: ${comprehension.main_argument}`,
+          "\nFatos extraídos:",
+          ...comprehension.key_facts.map((f, i) => `${i + 1}. ${f}`),
+          comprehension.key_quotes.length > 0 ? "\nCitações:" : "",
+          ...comprehension.key_quotes.map(
+            (q) => `— ${q.who}: "${q.quote}"`
+          ),
+        ]
+          .filter(Boolean)
+          .join("\n");
 
   return { comprehension, rawText };
 }
