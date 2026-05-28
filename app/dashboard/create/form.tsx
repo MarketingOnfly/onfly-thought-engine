@@ -672,7 +672,7 @@ export default function CreateForm({
 
         {/* ERRO + AÇÃO */}
         {error && (
-          <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          <div className="whitespace-pre-line rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm leading-relaxed text-destructive">
             {error}
           </div>
         )}

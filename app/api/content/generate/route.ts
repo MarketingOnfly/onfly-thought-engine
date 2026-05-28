@@ -93,6 +93,62 @@ export async function POST(request: NextRequest) {
   const variations = parsed.data.variations ?? 1;
   const systemPrompt = buildLeaderSystemPrompt(context);
 
+  // ============================================================
+  // BARREIRA ANTI-FABRICAÇÃO (REGRA ZERO em código)
+  //
+  // Caso real do Vini: anexou link substack pedindo "o primeiro erro
+  // do texto", motor leu pouco/nada, INVENTOU outro erro plausível.
+  // Mesmo com REGRA ZERO no prompt, modelo ainda inventou.
+  //
+  // Solução cirúrgica: se o líder pediu algo ESPECÍFICO de material
+  // ("o primeiro erro mencionado", "o que o autor diz") E o sistema
+  // NÃO CONSEGUIU LER o(s) material(is), abortamos ANTES de chamar o
+  // LLM. Erro 422 explicando que precisa colar o trecho.
+  //
+  // Sem essa barreira, o LLM SEMPRE tem o caminho fácil de "fingir
+  // que sabe" — porque tem tokens latentes do tema. A única forma de
+  // garantir é não deixar ele rodar.
+  // ============================================================
+  const unreadable = parsed.data.unreadable_sources ?? [];
+  const combinedPrompt = [
+    parsed.data.topic,
+    parsed.data.brief ?? "",
+    parsed.data.extra_instructions ?? "",
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  // Detecta se o prompt PEDE algo específico do material anexado
+  const SPECIFIC_REQUEST_PATTERNS = [
+    // ordinal + termo de conteúdo
+    /\b(primeir|segund|terceir|quart|quint|sext|sétim|oitav|non|décim)[oa]s?\s+(erro|ponto|item|tópico|exemplo|case|argumento|princíp|líção|aprendizad|capítul|seção|reflex|insight|pergunta|truque|dica|tese|mensagem|fato|dado|frase|trecho|paragraf)/i,
+    // referência ao texto/material em si
+    /\b(d[oa]|n[oa])\s+(text|link|artig|post|vídeo|video|podcast|matéria|noticia|notícia|reportagem|paper|entrevista|reportagem|episódio|episodio|live|conteúd)/i,
+    // palavras de citação
+    /\b(mencionad|citad|dit[ao]|comentad|destacad|afirmad)/i,
+    // "que o autor / fulano disse"
+    /\b(que\s+o\s+(autor|pierre|fulano|ele|ela)\s+(diz|fala|menciona|cita|defende|comenta|destaca|escreve|argumenta))/i,
+    // pede pra "comentar sobre" o material
+    /\b(comentar?|reagir?|responder?|escrever?)\s+(sobre|d[oa])\s+(text|link|artig|post|vídeo|matéria|esse|aquilo)/i,
+  ];
+  const requestsSpecificMaterial = SPECIFIC_REQUEST_PATTERNS.some((p) =>
+    p.test(combinedPrompt)
+  );
+
+  if (unreadable.length > 0 && requestsSpecificMaterial) {
+    const sourceList = unreadable
+      .map((s) => `• ${s.title}${s.url ? ` (${s.url})` : ""}`)
+      .join("\n");
+    return NextResponse.json(
+      {
+        error: `Você pediu algo específico do material anexado (ex: "o primeiro erro mencionado"), mas o sistema NÃO conseguiu ler o conteúdo. Materiais com leitura falhada:\n\n${sourceList}\n\nGeralmente é paywall, anti-bot (Cloudflare), ou PDF protegido. Pra evitar que o motor invente conteúdo: cole o TRECHO ESPECÍFICO que você quer usar (ex: o primeiro erro do texto) no campo "Ideia" ou "Briefing" e refaz. O motor escreve com base no trecho colado.`,
+        kind: "unreadable_material_specific_request",
+        unreadable_sources: unreadable,
+      },
+      { status: 422 }
+    );
+  }
+
   const lengthPreset = parsed.data.length
     ? CONTENT_LENGTHS.find((l) => l.key === parsed.data.length)
     : null;
