@@ -124,7 +124,6 @@ export default function ContentEditor({
   const router = useRouter();
   const [draft, setDraft] = useState<ContentDraft>(initial);
   const [revising, setRevising] = useState(false);
-  const [revisionPrompt, setRevisionPrompt] = useState("");
   const [editing, setEditing] = useState(false);
   const [localText, setLocalText] = useState(initial.draft_markdown ?? "");
   const [copied, setCopied] = useState(false);
@@ -254,8 +253,12 @@ export default function ContentEditor({
     }
   }
 
-  async function revise(presetInstructions?: string) {
-    const instructions = presetInstructions ?? revisionPrompt;
+  /**
+   * Disparada pelo botão "Refinar com base nas sugestões" do
+   * StyleScoreDetails. O painel unificado de feedback chama /api/content/revise
+   * diretamente — não passa por aqui.
+   */
+  async function revise(instructions: string) {
     if (instructions.trim().length < 5) return;
     setRevising(true);
     setError(null);
@@ -273,11 +276,7 @@ export default function ContentEditor({
     }
     setDraft(res.data.draft);
     setLocalText(res.data.draft.draft_markdown ?? "");
-    if (!presetInstructions) setRevisionPrompt("");
-    // Pra presets, rola pro topo pra o líder ver o texto novo
-    if (presetInstructions) {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function approve() {
@@ -781,100 +780,21 @@ export default function ContentEditor({
                 </>
               )}
 
-              {/* CARD 1 — Pedir ajuste (primary action) */}
+              {/* CARD — Avaliar e refinar (UNIFICADO: feedback + ajuste num só painel) */}
               {display && (
-                <div className="rounded-2xl border border-brand-200 bg-card p-5 shadow-sm">
-                  <h3 className="flex items-center gap-2 text-sm font-medium">
-                    <Wand2 className="h-3.5 w-3.5 text-brand-600" />
-                    Pedir ajuste em pt-BR
-                  </h3>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Diga o que mudar. Mantém sua voz.
-                  </p>
-                  <Textarea
-                    value={revisionPrompt}
-                    onChange={(e) => setRevisionPrompt(e.target.value)}
-                    placeholder={
-                      isPost
-                        ? "Ex: hook mais ácido. tira a citação do fim. quero um número no 2º parágrafo."
-                        : "Ex: seção 3 precisa de mais bastidor. conclusão muito polida — quero uma aposta forte."
-                    }
-                    rows={4}
-                    className="mt-3"
-                  />
-                  {error && (
-                    <p className="mt-2 text-xs text-destructive">{error}</p>
-                  )}
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    className="mt-3 w-full"
-                    onClick={() => revise()}
-                    disabled={revising || revisionPrompt.trim().length < 5}
-                  >
-                    {revising ? (
-                      <>
-                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />{" "}
-                        Revisando…
-                      </>
-                    ) : (
-                      <>
-                        <Wand2 className="h-3.5 w-3.5" /> Aplicar
-                      </>
-                    )}
-                  </Button>
-
-                  {/* Atalhos de revisão 1-clique — vão direto sem digitar */}
-                  <div className="mt-3 border-t border-border pt-3">
-                    <p className="mb-2 text-[10px] uppercase tracking-wide text-muted-foreground">
-                      Atalhos
-                    </p>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          revise(
-                            "Mantém a tese mas torna o texto mais ousado e provocador. Hook mais ácido. Fechamento que aposta numa visão de futuro. Cortar qualquer floreio que sobrar."
-                          )
-                        }
-                        disabled={revising}
-                        className="rounded-lg border border-border bg-background px-2 py-2 text-[11px] font-medium text-foreground transition hover:border-brand-400 hover:bg-secondary disabled:opacity-50"
-                        title="Hook mais ácido, aposta mais forte"
-                      >
-                        + Ousado
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          revise(
-                            "Mantém a tese mas torna o texto mais sóbrio e analítico. Cortar adjetivos fortes. Mais dado, menos opinião. Linguagem de operador, sem provocação direta."
-                          )
-                        }
-                        disabled={revising}
-                        className="rounded-lg border border-border bg-background px-2 py-2 text-[11px] font-medium text-foreground transition hover:border-brand-400 hover:bg-secondary disabled:opacity-50"
-                        title="Mais analítico e contido"
-                      >
-                        + Sóbrio
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          revise(
-                            "Refaz o texto do zero, mantendo apenas o tema e a tese central. Estrutura, hook, exemplo e fechamento todos diferentes — outro caminho narrativo."
-                          )
-                        }
-                        disabled={revising}
-                        className="rounded-lg border border-border bg-background px-2 py-2 text-[11px] font-medium text-foreground transition hover:border-brand-400 hover:bg-secondary disabled:opacity-50"
-                        title="Mesma tese, outro caminho"
-                      >
-                        ↻ Refazer
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                <FeedbackPanel
+                  draftId={draft.id}
+                  onRevised={(d) => {
+                    setDraft(d);
+                    setLocalText(d.draft_markdown ?? "");
+                    setActiveVariation(0);
+                    // rola pra cima pra o líder ver o texto novo
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                />
               )}
 
-              {/* CARD 3 — Agendar */}
+              {/* CARD — Agendar publicação */}
               <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
                 <h3 className="flex items-center gap-2 text-sm font-medium">
                   <CalendarDays className="h-3.5 w-3.5 text-brand-600" />
@@ -921,19 +841,6 @@ export default function ContentEditor({
                 )}
               </div>
 
-              {/* CARD 4 — Feedback (sempre visível, retroalimenta o motor) */}
-              {display && (
-                <FeedbackPanel
-                  draftId={draft.id}
-                  onRevised={(d) => {
-                    setDraft(d);
-                    setLocalText(d.draft_markdown ?? "");
-                    setActiveVariation(0);
-                    // rola pra cima pra o líder ver o texto novo
-                    window.scrollTo({ top: 0, behavior: "smooth" });
-                  }}
-                />
-              )}
             </>
           )}
         </aside>
