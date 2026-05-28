@@ -8,7 +8,11 @@ import {
 } from "@/lib/anthropic/prompts";
 import { generateContentSchema } from "@/lib/validation";
 import { CONTENT_LENGTHS, MOOD_VARIATIONS } from "@/lib/style-presets";
-import { planContent, planAsPromptContext } from "@/lib/anthropic/plan-content";
+import {
+  planContent,
+  planAsPromptContext,
+  planAsPromptContextForStrategy,
+} from "@/lib/anthropic/plan-content";
 import { polishPass, applyHardRules } from "@/lib/anthropic/polish-pass";
 import { getFewShotExamples } from "@/lib/anthropic/few-shot";
 import { reviewText } from "@/lib/anthropic/review";
@@ -133,7 +137,9 @@ export async function POST(request: NextRequest) {
   }
 
   const draftId = insertRes.data.id;
-  const moodBiases = pickMoodBiases(parsed.data.mood ?? null, variations);
+  // moodBiases é fallback se o planner não devolver variation_strategies.
+  // Quando ele devolve, usamos a estratégia completa (framework+mood) por variação.
+  const moodBiasesFallback = pickMoodBiases(parsed.data.mood ?? null, variations);
 
   try {
     // ============================================================
@@ -151,12 +157,28 @@ export async function POST(request: NextRequest) {
       brief: parsed.data.brief ?? null,
       leader: context.leader as LeaderProfile,
     });
-    const planContext = planAsPromptContext(plan);
 
     const effectiveHookStyle =
       parsed.data.hook_style ?? plan.recommended_hook_style ?? null;
     const effectiveContentType =
       parsed.data.content_type ?? plan.recommended_content_type ?? null;
+
+    // Monta a lista de estratégias por variação. Se o planner devolveu
+    // variation_strategies, usa elas (3 frameworks DISTINTOS com moods
+    // específicos). Senão, usa moodBiasesFallback + framework principal.
+    const variationPlans =
+      plan.variation_strategies && plan.variation_strategies.length >= variations
+        ? plan.variation_strategies
+            .slice(0, variations)
+            .map((s) => ({ moodKey: s.mood, strategy: s }))
+        : moodBiasesFallback.map((m) => ({
+            moodKey: m,
+            strategy: {
+              framework: plan.narrative_framework ?? "story_arc",
+              mood: m ?? "best_day",
+              rationale: "fallback (planner não devolveu variation_strategies)",
+            },
+          }));
 
     // ============================================================
     // FASE 2 — DRAFT (Sonnet, N paralelas com mood distinto)
@@ -169,11 +191,16 @@ export async function POST(request: NextRequest) {
     });
 
     const anthropic = getAnthropic();
-    const calls = moodBiases.map(async (moodKey) => {
-      // TODAS as variações usam o mesmo hook do planner. A diferenciação
-      // A/B/C vem do mood (humor) — best_day vs critical vs reflective.
-      // Forçar hook diferente em cada variação (como fazíamos antes)
-      // gerava B/C com hook que o motor considera inferior pra a ideia.
+    const calls = variationPlans.map(async ({ moodKey, strategy }) => {
+      // Cada variação A/B/C usa uma ESTRATÉGIA distinta:
+      //  - framework próprio (vindo do planner que pondera o histórico)
+      //  - mood próprio
+      // Permite o sistema APRENDER qual estratégia o líder prefere.
+      const planContextForThisVariation = planAsPromptContextForStrategy(
+        plan,
+        strategy
+      );
+
       const userPrompt = buildContentUserPrompt({
         format: parsed.data.format,
         topic: parsed.data.topic,
@@ -186,7 +213,7 @@ export async function POST(request: NextRequest) {
         length: parsed.data.length ?? null,
         toneOverride: parsed.data.tone_override ?? null,
         mood: moodKey as "best_day" | "critical" | "reflective" | null,
-        planContext,
+        planContext: planContextForThisVariation,
         fewShot,
       });
 
@@ -221,7 +248,7 @@ export async function POST(request: NextRequest) {
         .join("\n")
         .trim();
 
-      return { moodKey, raw };
+      return { moodKey, raw, strategy };
     });
 
     // SAFETY NET: aplica applyHardRules JÁ no draft cru. Mesmo que o
@@ -229,7 +256,15 @@ export async function POST(request: NextRequest) {
     // profundidade — aplicado em CADA fase do pipeline.
     const drafted = (await Promise.allSettled(calls))
       .map((r) => (r.status === "fulfilled" ? r.value : null))
-      .filter((x): x is { moodKey: string | null; raw: string } => !!x && !!x.raw)
+      .filter(
+        (
+          x
+        ): x is {
+          moodKey: string | null;
+          raw: string;
+          strategy: { framework: string; mood: string; rationale: string };
+        } => !!x && !!x.raw
+      )
       .map((d) => ({ ...d, raw: applyHardRules(d.raw) }));
 
     if (!drafted.length) throw new Error("Todas as gerações falharam na fase de draft.");
@@ -254,10 +289,13 @@ export async function POST(request: NextRequest) {
     const polishedFinal = drafted.map((d, i) => {
       const p = polished[i];
       // SAFETY NET 2: fallback do polish também passa por applyHardRules.
-      // O d.raw já está limpo (aplicamos acima), mas a defesa redundante
-      // protege contra qualquer reintrodução.
       const text = p.status === "fulfilled" && p.value ? p.value : d.raw;
-      return { moodKey: d.moodKey, text: applyHardRules(text) };
+      // Propaga strategy junto pra ser salva nas alt_versions no fim
+      return {
+        moodKey: d.moodKey,
+        text: applyHardRules(text),
+        strategy: d.strategy,
+      };
     });
 
     // ============================================================
@@ -326,12 +364,31 @@ export async function POST(request: NextRequest) {
     // Salva primary + alt_versions + plan + review no meta
     // ============================================================
     const primary = final[0];
-    const alts: AltVersion[] = final.slice(1).map((s, i) => ({
-      id: crypto.randomUUID(),
-      label: `Versão ${String.fromCharCode(66 + i)} — ${labelForMood(s.moodKey)}`,
-      body: s.text,
-      generated_at: new Date().toISOString(),
-    }));
+    const alts: AltVersion[] = final.slice(1).map((s, i) => {
+      // Tenta puxar a strategy do polishedFinal correspondente (mesmo índice
+      // +1 já que primary é index 0). O strategy fica no polishedFinal, não no
+      // critiqued (que não propaga).
+      const polishedSlot = polishedFinal[i + 1];
+      const strategy = polishedSlot?.strategy;
+      const frameworkLabel = strategy?.framework
+        ? ` · ${strategy.framework}`
+        : "";
+      return {
+        id: crypto.randomUUID(),
+        label: `Versão ${String.fromCharCode(66 + i)} — ${labelForMood(s.moodKey)}${frameworkLabel}`,
+        body: s.text,
+        generated_at: new Date().toISOString(),
+        // Salva a estratégia usada — sinal pro aprendizado quando o líder
+        // promover essa variação ou der feedback.
+        strategy: strategy
+          ? {
+              framework: strategy.framework,
+              mood: strategy.mood,
+              hook_style: effectiveHookStyle,
+            }
+          : undefined,
+      };
+    });
 
     // Salva versão A no histórico
     await supabase.from("draft_versions").insert({

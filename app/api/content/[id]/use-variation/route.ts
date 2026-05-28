@@ -53,12 +53,27 @@ export async function POST(
   // Remove a variação escolhida da lista
   const nextAlts = alts.filter((a) => a.id !== versionId);
 
+  // RASTREIO DE APRENDIZADO: quando o líder promove uma variação alt,
+  // isso é sinal forte de preferência pela ESTRATÉGIA daquela variação.
+  // Salva no meta do draft pra learn-preferred-strategies pegar depois.
+  const prevMeta = (draft.meta as Record<string, unknown>) ?? {};
+  const updatedMeta = {
+    ...prevMeta,
+    promoted_variation: {
+      version_id: versionId,
+      label: target.label,
+      strategy: target.strategy ?? null,
+      promoted_at: new Date().toISOString(),
+    },
+  };
+
   const { data: updated, error } = await supabase
     .from("content_drafts")
     .update({
       draft_markdown: target.body,
       alt_versions: nextAlts,
       style_score: null, // invalida score — texto novo precisa reavaliar
+      meta: updatedMeta,
     })
     .eq("id", id)
     .eq("user_id", user.id)

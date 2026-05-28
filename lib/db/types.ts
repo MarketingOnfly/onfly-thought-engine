@@ -59,6 +59,15 @@ export interface AltVersion {
   label: string; // ex: "Versão A (hook contrarian)"
   body: string;
   generated_at: string;
+  // Estratégia usada nessa versão — rastreada pra aprendizado.
+  // Quando o líder PROMOVE uma versão alt (use-variation), sabemos
+  // qual estratégia ele preferiu. Quando dá feedback positivo, sabemos
+  // qual estratégia rendeu melhor.
+  strategy?: {
+    framework: string | null; // key de NARRATIVE_FRAMEWORKS
+    mood: string | null; // key de MOOD_VARIATIONS
+    hook_style: string | null; // key de HOOK_STYLES
+  };
 }
 
 export interface StyleScoreDimensions {

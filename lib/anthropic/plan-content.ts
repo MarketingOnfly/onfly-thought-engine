@@ -6,11 +6,15 @@
 
 import { getAnthropic, MODEL } from "@/lib/anthropic/client";
 import type { LeaderProfile } from "@/lib/db/types";
-import { CONTENT_TYPES, HOOK_STYLES } from "@/lib/style-presets";
+import { CONTENT_TYPES, HOOK_STYLES, MOOD_VARIATIONS } from "@/lib/style-presets";
 import {
   NARRATIVE_FRAMEWORKS,
   frameworksForPlanner,
 } from "@/lib/anthropic/narrative-frameworks";
+import {
+  getPreferredStrategies,
+  preferredStrategiesAsPromptHint,
+} from "@/lib/anthropic/learn-preferred-strategies";
 
 export interface ContentPlan {
   audience_specific: string;
@@ -36,6 +40,16 @@ export interface ContentPlan {
   // Cabe em uma linha do LinkedIn. Se o post não cabe nessa frase, não
   // tem foco.
   controlling_idea: string | null;
+  // NOVO (2026-05): estratégias DISTINTAS pra cada variação A/B/C.
+  // O planner escolhe 3 combinações diferentes (framework + mood),
+  // ponderando o histórico de escolhas/feedbacks do líder.
+  // Versão A = exploitation (melhor pro tema), B = alternativa próxima,
+  // C = exploração (estratégia que o líder nunca testou).
+  variation_strategies?: Array<{
+    framework: string; // key de NARRATIVE_FRAMEWORKS
+    mood: string; // key de MOOD_VARIATIONS
+    rationale: string; // por que essa estratégia pra essa variação
+  }>;
 }
 
 const HOOK_OPTIONS_TEXT = HOOK_STYLES.map(
@@ -102,9 +116,17 @@ Devolva JSON puro com:
   "recommended_content_type": "string — APENAS o key (ex: 'learnings', 'newsjacking'). Escolha 1 das opções listadas acima que melhor cabe na ideia.",
   "hook_rationale": "string curta — 1 frase explicando POR QUE esse hook style cabe nessa ideia específica.",
   "content_type_rationale": "string curta — 1 frase explicando POR QUE esse content type cabe nessa ideia específica.",
-  "narrative_framework": "string — APENAS o key do framework escolhido (story_arc, pas, bab, contrarian_structured, story_brand_sb7, hook_story_offer, newsjacking_take, expensive_lesson).",
+  "narrative_framework": "string — APENAS o key do framework escolhido (story_arc, pas, bab, contrarian_structured, story_brand_sb7, hook_story_offer, newsjacking_take, expensive_lesson, paisa, sb7_short, three_sentence).",
   "framework_rationale": "string — 1 frase explicando POR QUE esse framework cabe nessa ideia.",
-  "controlling_idea": "string — a tese central em UMA frase declarativa, até 15 palavras, que cabe numa linha do LinkedIn."
+  "controlling_idea": "string — a tese central em UMA frase declarativa, até 15 palavras, que cabe numa linha do LinkedIn.",
+  "variation_strategies": [
+    {
+      "framework": "string — key (igual narrative_framework pra versão A)",
+      "mood": "string — key (best_day | critical | reflective)",
+      "rationale": "string curta — POR QUE essa estratégia pra essa variação"
+    },
+    "{ ...3 estratégias DISTINTAS no total. A = exploitation (melhor pro tema, considerando histórico). B = alternativa próxima. C = exploração (estratégia que o líder testou pouco). NUNCA repita o mesmo framework em 2 variações. }"
+  ]
 }
 
 Critérios:
@@ -112,7 +134,8 @@ Critérios:
 - Se key_facts for vazio, escreve um placeholder ("verificar via web_search ou substituir por experiência operacional do líder").
 - mood_signature é única em cada plano, não um clichê.
 - recommended_hook_style e recommended_content_type SEMPRE preenchidos com um dos keys válidos.
-- narrative_framework SEMPRE preenchido. controlling_idea SEMPRE preenchida.`;
+- narrative_framework SEMPRE preenchido (igual à 1ª variation_strategies). controlling_idea SEMPRE preenchida.
+- variation_strategies SEMPRE 3 entradas com FRAMEWORKS DIFERENTES entre si. Sem isso, A/B/C ficam iguais e o aprendizado não acontece.`;
 
 function tryParse(text: string): Partial<ContentPlan> | null {
   const trimmed = text.trim();
@@ -145,14 +168,27 @@ PREFERE ABRIR ASSIM (use como sinal mas não obrigue): ${opts.leader.preferred_h
 TIPOS DE CONTEÚDO QUE COSTUMA PRODUZIR: ${opts.leader.content_types.join(", ") || "(sem preferência registrada)"}.
 NUNCA ESCREVE: ${opts.leader.tone_avoid.join(", ")}.`;
 
+  // NOVO: aprendizado de estratégias preferidas baseado no histórico
+  // do líder. Rastreado por: rating, publicação, promoção de variação.
+  // Usado pra o planner ponderar quais 3 estratégias escolher pras
+  // variações A/B/C. Falha silenciosa se erro (planner ainda decide
+  // sem o histórico).
+  let strategiesHint = "";
+  try {
+    const prefs = await getPreferredStrategies(opts.leader.user_id);
+    strategiesHint = preferredStrategiesAsPromptHint(prefs);
+  } catch (err) {
+    console.error("[planContent] failed to get preferred strategies", err);
+  }
+
   const response = await anthropic.messages.create({
     model: MODEL, // Opus pra pensar bem o plano
-    max_tokens: 2000,
+    max_tokens: 2500, // aumentado pra caber variation_strategies
     system: SYSTEM_PROMPT,
     messages: [
       {
         role: "user",
-        content: `Planeje um ${opts.format === "linkedin_post" ? "POST" : "ARTIGO"} sobre:\n\nTEMA: ${opts.topic}\n${opts.brief ? `BRIEFING: ${opts.brief}\n` : ""}\n${leaderSnapshot}\n\nLembre: você TAMBÉM precisa escolher recommended_hook_style e recommended_content_type olhando pra essa ideia específica. Use os critérios do system prompt.`,
+        content: `Planeje um ${opts.format === "linkedin_post" ? "POST" : "ARTIGO"} sobre:\n\nTEMA: ${opts.topic}\n${opts.brief ? `BRIEFING: ${opts.brief}\n` : ""}\n${leaderSnapshot}\n\n${strategiesHint}\n\nLembre: você TAMBÉM precisa escolher recommended_hook_style, recommended_content_type, narrative_framework, e 3 variation_strategies DISTINTAS olhando pra essa ideia + o histórico do líder. Use os critérios do system prompt.`,
       },
     ],
   });
@@ -185,6 +221,49 @@ NUNCA ESCREVE: ${opts.leader.tone_avoid.join(", ")}.`;
       ? (parsed.narrative_framework as string)
       : "story_arc"; // default conservador
 
+  // Parsear variation_strategies — 3 estratégias distintas pras variações A/B/C
+  const validMoodKeys = new Set<string>(MOOD_VARIATIONS.map((m) => m.key));
+  const rawStrategies = Array.isArray(parsed?.variation_strategies)
+    ? (parsed.variation_strategies as unknown[]).filter(
+        (s): s is { framework: string; mood: string; rationale: string } =>
+          typeof s === "object" &&
+          s !== null &&
+          typeof (s as { framework?: unknown }).framework === "string" &&
+          typeof (s as { mood?: unknown }).mood === "string"
+      )
+    : [];
+
+  // Valida cada estratégia + garante que sejam DIFERENTES (sem framework repetido)
+  const seenFrameworks = new Set<string>();
+  const variationStrategies = rawStrategies
+    .filter((s) => {
+      if (!validFrameworkKeys.has(s.framework)) return false;
+      if (seenFrameworks.has(s.framework)) return false;
+      seenFrameworks.add(s.framework);
+      return true;
+    })
+    .map((s) => ({
+      framework: s.framework,
+      mood: validMoodKeys.has(s.mood) ? s.mood : "best_day",
+      rationale: typeof s.rationale === "string" ? s.rationale : "",
+    }))
+    .slice(0, 3);
+
+  // Fallback: se o planner não devolveu 3 estratégias válidas distintas,
+  // completa com defaults DIVERSOS (3 frameworks diferentes do catálogo).
+  if (variationStrategies.length < 3) {
+    const DEFAULT_FALLBACK = [
+      { framework: narrativeFramework, mood: "best_day", rationale: "default exploitation" },
+      { framework: "expensive_lesson", mood: "critical", rationale: "default alternativa" },
+      { framework: "three_sentence", mood: "reflective", rationale: "default exploração" },
+    ];
+    for (const def of DEFAULT_FALLBACK) {
+      if (variationStrategies.length >= 3) break;
+      if (variationStrategies.find((s) => s.framework === def.framework)) continue;
+      variationStrategies.push(def);
+    }
+  }
+
   return {
     audience_specific:
       parsed?.audience_specific?.toString() ?? opts.leader.target_audience,
@@ -205,7 +284,25 @@ NUNCA ESCREVE: ${opts.leader.tone_avoid.join(", ")}.`;
     narrative_framework: narrativeFramework,
     framework_rationale: parsed?.framework_rationale?.toString() ?? null,
     controlling_idea: parsed?.controlling_idea?.toString() ?? null,
+    variation_strategies: variationStrategies,
   };
+}
+
+/**
+ * Versão do planAsPromptContext PARAMETRIZADA por estratégia de variação.
+ * Cada variação A/B/C usa um framework distinto — esta função substitui
+ * o framework default do plan pelo da variação específica.
+ */
+export function planAsPromptContextForStrategy(
+  plan: ContentPlan,
+  strategy: { framework: string; mood: string; rationale: string }
+): string {
+  const planForStrategy: ContentPlan = {
+    ...plan,
+    narrative_framework: strategy.framework,
+    framework_rationale: strategy.rationale || plan.framework_rationale,
+  };
+  return planAsPromptContext(planForStrategy);
 }
 
 export function planAsPromptContext(plan: ContentPlan): string {
