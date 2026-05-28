@@ -135,15 +135,65 @@ export async function POST(request: NextRequest) {
     p.test(combinedPrompt)
   );
 
+  // Se o frontend marcou unreadable mas o líder pediu específico do
+  // material, fazemos UMA ÚLTIMA TENTATIVA de ler via Claude+web_search
+  // direto aqui (pode ter sido erro temporário no /extract antes).
+  // Só bloqueia se ESSA tentativa também falhar.
+  let stillUnreadable = unreadable;
   if (unreadable.length > 0 && requestsSpecificMaterial) {
-    const sourceList = unreadable
+    const { fetchAndComprehendUrl } = await import(
+      "@/lib/anthropic/fetch-and-comprehend"
+    );
+    const recheckResults = await Promise.all(
+      unreadable
+        .filter((s) => s.url) // só URLs (PDFs corruptos não dá)
+        .map(async (s) => {
+          try {
+            const fc = await fetchAndComprehendUrl({
+              url: s.url!,
+              hintTitle: s.title,
+            });
+            return {
+              source: s,
+              ok:
+                !fc.comprehension.comprehension_failed &&
+                fc.comprehension.key_facts.length > 0,
+              comprehension: fc.comprehension,
+            };
+          } catch {
+            return { source: s, ok: false, comprehension: null };
+          }
+        })
+    );
+
+    // Os que ainda falharam continuam unreadable. Os que agora deram certo
+    // VIRAM key_facts adicionais pra must_cite_facts no resto do pipeline.
+    stillUnreadable = recheckResults
+      .filter((r) => !r.ok)
+      .map((r) => r.source);
+    const recoveredFacts = recheckResults
+      .filter((r) => r.ok && r.comprehension)
+      .flatMap((r) => r.comprehension!.key_facts);
+
+    if (recoveredFacts.length > 0) {
+      // Injeta no must_cite_facts pra o pipeline usar
+      const existingFacts = parsed.data.must_cite_facts ?? [];
+      parsed.data.must_cite_facts = [...existingFacts, ...recoveredFacts].slice(
+        0,
+        20
+      );
+    }
+  }
+
+  if (stillUnreadable.length > 0 && requestsSpecificMaterial) {
+    const sourceList = stillUnreadable
       .map((s) => `• ${s.title}${s.url ? ` (${s.url})` : ""}`)
       .join("\n");
     return NextResponse.json(
       {
-        error: `Você pediu algo específico do material anexado (ex: "o primeiro erro mencionado"), mas o sistema NÃO conseguiu ler o conteúdo. Materiais com leitura falhada:\n\n${sourceList}\n\nGeralmente é paywall, anti-bot (Cloudflare), ou PDF protegido. Pra evitar que o motor invente conteúdo: cole o TRECHO ESPECÍFICO que você quer usar (ex: o primeiro erro do texto) no campo "Ideia" ou "Briefing" e refaz. O motor escreve com base no trecho colado.`,
+        error: `Você pediu algo específico do material anexado (ex: "o primeiro erro mencionado"), mas o sistema NÃO conseguiu ler o conteúdo nem com a busca direta do Claude. Materiais com leitura falhada:\n\n${sourceList}\n\nGeralmente é paywall completo (Substack/Medium pago), site privado, ou link 404. Pra evitar que o motor invente conteúdo: cole o TRECHO ESPECÍFICO que você quer usar (ex: o primeiro erro do texto) no campo "Ideia" ou "Briefing" e refaz.`,
         kind: "unreadable_material_specific_request",
-        unreadable_sources: unreadable,
+        unreadable_sources: stillUnreadable,
       },
       { status: 422 }
     );

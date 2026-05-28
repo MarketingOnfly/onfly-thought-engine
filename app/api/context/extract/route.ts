@@ -8,6 +8,7 @@ import { extractArticle } from "@/lib/extract-article";
 import { transcribeYoutube, extractVideoId } from "@/lib/transcribe-youtube";
 import { parseDocument } from "@/lib/parse-document";
 import { comprehendLink, type LinkComprehension } from "@/lib/anthropic/comprehend-link";
+import { fetchAndComprehendUrl } from "@/lib/anthropic/fetch-and-comprehend";
 
 // maxDuration aumentada de 60→180s pra suportar fallback Whisper de
 // vídeos sem legenda: download do áudio (~10-30s) + Whisper API
@@ -128,6 +129,39 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+      // NOVO CAMINHO PRIMÁRIO (2026-05-28): usar Claude com web_search
+      // pra LER A URL DIRETAMENTE. Resolve substack/cloudflare/paywall que
+      // o scraping em Node falhava. Caminho antigo (extractArticle + comprehend)
+      // vira FALLBACK só se a leitura via Claude falhar.
+      try {
+        const fc = await fetchAndComprehendUrl({ url: input.url });
+
+        // Se Claude conseguiu ler (key_facts não vazio e comprehension_failed false),
+        // retornamos direto. Esse é o caso esperado.
+        if (
+          !fc.comprehension.comprehension_failed &&
+          fc.comprehension.key_facts.length > 0
+        ) {
+          return NextResponse.json<ExtractResult>({
+            kind: "news",
+            title: fc.comprehension.headline,
+            url: input.url,
+            text: fc.rawText,
+            truncated: false,
+            comprehension: fc.comprehension,
+          });
+        }
+        // Se Claude falhou, cai pro fallback abaixo (extractArticle)
+        console.warn(
+          "[extract] fetchAndComprehendUrl returned empty; falling back to extractArticle",
+          { url: input.url, source_quality: fc.comprehension.source_quality }
+        );
+      } catch (err) {
+        console.error("[extract] fetchAndComprehendUrl threw", err);
+      }
+
+      // FALLBACK: caminho antigo via fetch HTML + regex. Mantido por
+      // robustez quando web_search da Anthropic falhar (rate limit, etc).
       const art = await extractArticle(input.url);
       const comprehension = await comprehendLink({
         rawText: art.text,
