@@ -9,7 +9,10 @@ import { transcribeYoutube, extractVideoId } from "@/lib/transcribe-youtube";
 import { parseDocument } from "@/lib/parse-document";
 import { comprehendLink, type LinkComprehension } from "@/lib/anthropic/comprehend-link";
 
-export const maxDuration = 60;
+// maxDuration aumentada de 60→180s pra suportar fallback Whisper de
+// vídeos sem legenda: download do áudio (~10-30s) + Whisper API
+// (~5-40s pra podcast de 30min). Vercel Pro suporta até 300s.
+export const maxDuration = 180;
 export const runtime = "nodejs";
 
 const schema = z.discriminatedUnion("kind", [
