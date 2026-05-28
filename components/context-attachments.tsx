@@ -18,10 +18,14 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+// Importado do arquivo de TYPES (puro, sem Anthropic SDK).
+// Antes importava de comprehend-link.ts (server) e o bundler arrastava
+// o SDK Anthropic pro bundle client, quebrando a página com
+// "Application error: a client-side exception has occurred".
 import {
   comprehensionAsPromptBlock,
   type LinkComprehension,
-} from "@/lib/anthropic/comprehend-link";
+} from "@/lib/anthropic/comprehend-link-types";
 
 export type AttachmentKind = "youtube" | "news" | "pdf" | "discovery";
 
