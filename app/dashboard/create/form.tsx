@@ -494,9 +494,21 @@ export default function CreateForm({
               </div>
 
               <div>
-                <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Como abrir o texto
-                </Label>
+                <div className="flex items-baseline justify-between gap-2">
+                  <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Como abrir o texto
+                  </Label>
+                  {!hookStyle && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-medium text-brand-700">
+                      <Sparkles className="h-2.5 w-2.5" /> Automático
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {hookStyle
+                    ? "Você forçou um estilo. Pra deixar o motor escolher, clique no selecionado pra desmarcar."
+                    : "O motor escolhe o melhor hook baseado na sua ideia, perfil e guidelines. Só selecione se quiser forçar um padrão específico."}
+                </p>
                 <div className="mt-2">
                   <CardSingleSelect
                     options={[...HOOK_STYLES]}
@@ -508,9 +520,21 @@ export default function CreateForm({
               </div>
 
               <div>
-                <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Tipo de conteúdo
-                </Label>
+                <div className="flex items-baseline justify-between gap-2">
+                  <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Tipo de conteúdo
+                  </Label>
+                  {!contentType && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-medium text-brand-700">
+                      <Sparkles className="h-2.5 w-2.5" /> Automático
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {contentType
+                    ? "Você forçou um tipo. Pra deixar automático, clique no selecionado."
+                    : "O motor identifica o melhor ângulo (newsjacking, contrarian, bastidor, etc.) a partir da ideia + anexos. Só fixe se já souber o que quer."}
+                </p>
                 <div className="mt-2">
                   <CardSingleSelect
                     options={[...CONTENT_TYPES]}

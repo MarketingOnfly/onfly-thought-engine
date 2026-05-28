@@ -172,11 +172,16 @@ export async function POST(request: NextRequest) {
 
   const draftId = insertRes.data.id;
   const moodBiases = pickMoodBiases(parsed.data.mood ?? null, variations);
-  const hookPatterns = pickHookPatterns(parsed.data.hook_style ?? null, variations);
 
   try {
     // ============================================================
     // FASE 1 — PLAN (Opus, 1 chamada compartilhada por todas variações)
+    //
+    // O planner também ESCOLHE o melhor hook_style e content_type
+    // baseado na ideia. Se o líder forçou um valor no formulário,
+    // a escolha do líder tem precedência (é o que ele quis). Se o
+    // líder deixou em branco (default = automático), usamos a
+    // recomendação do planner.
     // ============================================================
     const plan = await planContent({
       format: parsed.data.format,
@@ -185,6 +190,12 @@ export async function POST(request: NextRequest) {
       leader: context.leader as LeaderProfile,
     });
     const planContext = planAsPromptContext(plan);
+
+    const effectiveHookStyle =
+      parsed.data.hook_style ?? plan.recommended_hook_style ?? null;
+    const effectiveContentType =
+      parsed.data.content_type ?? plan.recommended_content_type ?? null;
+    const hookPatterns = pickHookPatterns(effectiveHookStyle, variations);
 
     // ============================================================
     // FASE 2 — DRAFT (Sonnet, N paralelas com mood distinto)
@@ -218,9 +229,10 @@ export async function POST(request: NextRequest) {
         topic: parsed.data.topic,
         brief: parsed.data.brief,
         extraInstructions: extraWithHook || null,
-        hookStyle: parsed.data.hook_style,
+        // Usa a escolha do planner quando o líder não forçou
+        hookStyle: effectiveHookStyle,
         objective: parsed.data.objective,
-        contentType: parsed.data.content_type,
+        contentType: effectiveContentType,
         length: parsed.data.length ?? null,
         toneOverride: parsed.data.tone_override ?? null,
         mood: moodKey as "best_day" | "critical" | "reflective" | null,
@@ -370,6 +382,18 @@ export async function POST(request: NextRequest) {
           plan,
           review: primary.review ?? null,
           self_repaired: primary.repaired,
+          // Trilha de decisão editorial — útil pro líder ver o que o
+          // motor escolheu quando ele deixou em automático.
+          effective_hook_style: effectiveHookStyle,
+          effective_content_type: effectiveContentType,
+          hook_chosen_by:
+            parsed.data.hook_style ? "leader" : plan.recommended_hook_style ? "planner" : "default",
+          content_type_chosen_by:
+            parsed.data.content_type
+              ? "leader"
+              : plan.recommended_content_type
+                ? "planner"
+                : "default",
         },
       })
       .eq("id", draftId)

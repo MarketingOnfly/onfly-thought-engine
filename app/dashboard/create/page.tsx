@@ -56,8 +56,12 @@ export default async function CreatePage({
             : null
         }
         defaultObjective={profile?.objectives?.[0] ?? null}
-        defaultHookStyle={profile?.preferred_hook_styles?.[0] ?? null}
-        defaultContentType={profile?.content_types?.[0] ?? null}
+        // Hook style e content type NÃO são pré-selecionados. O motor
+        // decide o melhor ângulo na fase de planejamento, baseado na
+        // ideia + perfil + guidelines. Líder pode opcionalmente forçar
+        // um estilo, mas o default é "automático".
+        defaultHookStyle={null}
+        defaultContentType={null}
         defaultTone={profile?.tone_traits ?? []}
       />
     </div>
