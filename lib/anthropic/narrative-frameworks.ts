@@ -173,6 +173,58 @@ export const NARRATIVE_FRAMEWORKS: readonly NarrativeFramework[] = [
     anti_pattern:
       "Vulnerabilidade performática sem número/data. 'Errei e aprendi muito' = IA. 'Perdi R$ 2,3 mi em 4 meses' = humano.",
   },
+  {
+    key: "paisa",
+    label: "PAISA (Roy Furr — versão completa do PAS)",
+    when_to_use:
+      "Mudança de opinião com argumento sólido. Mais completo que PAS porque adiciona a etapa INVALIDATE: mostra POR QUE outras soluções não servem antes de propor a sua. Bom pra contraposições de mercado.",
+    structure: [
+      "1. PROBLEM: problema concreto que mantém o leitor acordado de noite, em 1 linha com dado.",
+      "2. AGITATE: a consequência interna+externa de não resolver. Toca os 3 níveis de problema (externo, interno, filosófico).",
+      "3. INVALIDATE: por que as soluções óbvias (que o leitor já tentou ou tá pensando) NÃO resolvem. Lista 2-3 alternativas e elimina cada uma com critério próprio.",
+      "4. SOLVE: aí entra sua tese/framework/caminho como ÚNICA solução remanescente. Apresenta como 'category of one'.",
+      "5. ASK: convite específico pra ação (ou só uma assertion forte que aterrissa).",
+    ],
+    example_hook:
+      "87% dos CMOs B2B medem custo de mídia. 4% medem retorno por canal.",
+    example_close: "Mede CAC por cohort. Mídia média mente em mercado em mudança.",
+    anti_pattern:
+      "Pular a etapa INVALIDATE = post que parece pitch raso. Sem invalidar alternativas, sua solução não tem por quê ser melhor.",
+  },
+  {
+    key: "sb7_short",
+    label: "StoryBrand SB7 ultra-curto (Donald Miller)",
+    when_to_use:
+      "Post de educação técnica curto onde o leitor é o herói. Você é o guia. Bom quando há um framework simples pra entregar.",
+    structure: [
+      "1. PERSONAGEM (1 linha): nomeia o leitor com dor específica. 'Você é CMO B2B que cresceu 40% e o board ainda cortou seu bônus.'",
+      "2. PROBLEMA 3 NÍVEIS (3 linhas): externo (sintoma) + interno (frustração) + filosófico (injustiça).",
+      "3. GUIA (1 linha): você como guia com autoridade demonstrada (número/experiência), sem ser herói.",
+      "4. PLANO (2-3 linhas): 2-4 passos concretos. Bullets ou frases curtas.",
+      "5. AÇÃO + EVITAR FALHA + SUCESSO (1-2 linhas): o que acontece se aplicar / se não aplicar.",
+    ],
+    example_hook:
+      "Você é CFO de SaaS que cresceu 40%. O board cortou seu bônus mesmo assim.",
+    example_close:
+      "Mede CAC por cohort em 60 dias. Board volta a olhar você como aliado.",
+    anti_pattern:
+      "Posicionar você (líder) como herói da história. Quem é herói no SB7 é o LEITOR. Você é o guia.",
+  },
+  {
+    key: "three_sentence",
+    label: "3-Sentence Story (John Carlton via Furr)",
+    when_to_use:
+      "Post-punch curto (200-450 chars). Quando você quer uma única ideia forte sem deixar margem pra divagação. Bom pra newsjacking rápido ou ancoragem em 1 cena.",
+    structure: [
+      "1. SETUP (1 frase): onde/quando/quem. Cena ou contexto em uma frase só.",
+      "2. INCREASING CONFLICT (1 frase): o que deu errado / a inflexão / a virada.",
+      "3. RESOLUTION (1 frase): como terminou + tese implícita.",
+    ],
+    example_hook: "Sexta, 23h. Slack do CEO acende: 'precisamos conversar segunda'.",
+    example_close: "Reunião durou 12 minutos. Decisão já tava pronta.",
+    anti_pattern:
+      "Adicionar uma 4ª frase explicando a moral. A tese fica IMPLÍCITA na resolução. Explicar mata o efeito.",
+  },
 ];
 
 export type NarrativeFrameworkKey = (typeof NARRATIVE_FRAMEWORKS)[number]["key"];

@@ -296,6 +296,50 @@ Antes de escrever qualquer parágrafo, formule a CONTROLLING IDEA do post em UMA
 - Caber numa única linha do LinkedIn
 Se o post não pode ser resumido em UMA frase declarativa, não tem controlling idea, e vira essay sem foco. Reformule ou descarte.
 
+DATA VS STORY (McKee/Gerace, "Storynomics"):
+"Data lista o que aconteceu; story expressa COMO e POR QUÊ aconteceu."
+- Despejar dado sem encadeamento causal = post morto. "47% crescemos" sem o porquê = ruído.
+- Story pega o mesmo dado e mostra: o que veio antes, o que mudou, o que veio depois. Causalidade > frequência.
+- Marketing virou RHETORIC (argumento de um lado só) e perdeu credibilidade. Story restaura porque admite a outra possibilidade.
+- Antes de aprovar um parágrafo, pergunte: "esse fato tá explicando COMO/POR QUÊ algo aconteceu, ou só listando?". Se só lista, embuta numa cadeia causal ou corta.
+
+CLIENTE É O HERÓI, LÍDER É O GUIA (Donald Miller, "StoryBrand SB7"):
+Erro fatal: posicionar o líder como o HERÓI da história do post. Funciona em bio, não em LinkedIn.
+- No LinkedIn, o LEITOR é o herói. Ele tem uma dor, uma ambição, um problema. O LÍDER aparece como o GUIA (tipo Obi-Wan pro Luke, Yoda pra Skywalker), oferecendo princípio/framework/aposta que o leitor pode usar.
+- Implicação prática:
+  ✗ "Eu fiz X, conquistei Y, hoje sou Z." (líder como herói = auto-promoção)
+  ✓ "Você é CMO que enfrenta X. Aqui está o ângulo que ninguém comenta:" (leitor como herói, líder como guia)
+- O líder pode contar a PRÓPRIA história, mas a função narrativa é mostrar UM PRINCÍPIO que o LEITOR pode aplicar. Não é "olha o que conquistei", é "isso que vivi te dá um framework".
+- Quem aparece com humildade no LinkedIn (vulnerabilidade calibrada + número específico do erro próprio) vira o guia ideal. Quem aparece como herói cansa em 3 posts.
+
+3 NÍVEIS DE PROBLEMA (Donald Miller, "StoryBrand SB7"):
+Todo problema que você toca no post tem 3 camadas. Articule TODAS as 3, sem pular:
+- EXTERNO (o sintoma visível): "CAC subiu 35%."
+- INTERNO (a frustração emocional): "Aquela sensação de tá pedalando sem sair do lugar."
+- FILOSÓFICO (por que isso É INJUSTO ou IMPORTANTE no nível humano/profissional): "Trabalhar duro deveria render. Mais marketing deveria gerar mais venda."
+Post que só toca no externo (sintoma) parece técnico raso. Post que toca nos 3 níveis CONECTA porque o leitor sente que você entende a dor dele de verdade. Modelo:
+  1ª frase = externo (fato visível)
+  2ª frase = interno (a sensação que isso gera)
+  3ª frase (opcional, ousada) = filosófico (a injustiça/quebra de promessa)
+
+TESTE DO GRUÑIDO (Donald Miller adaptado, "StoryBrand"):
+Antes de publicar, finja ser um homem de caverna lendo seu post nos primeiros 5 segundos. Ele consegue grunir uma resposta a estas 3 perguntas?
+1. O QUE você está dizendo? (tese clara)
+2. COMO isso melhora a vida dele? (utilidade pro leitor)
+3. O QUE ele faz com isso? (próximo passo implícito)
+Se a resposta a qualquer uma é "não consegue grunir", o post tá confuso. Refaça.
+
+DOIS ERROS QUE MARCAS COMETEM (Donald Miller):
+1. Não focar em SOBREVIVÊNCIA/PROSPERIDADE do leitor (comer, dormir, ganhar dinheiro, manter time, evitar demissão, fechar deal). Texto que não toca em algo que ajuda o leitor sobreviver/prosperar = é só ruído pro cérebro dele.
+2. Forçar o leitor a "QUEIMAR CALORIAS" entendendo o que você quer dizer. Cérebro humano descarta texto que exige esforço. Simplicidade não é pobreza, é respeito pelo tempo do leitor.
+
+O "PORQUE" MÁGICO (Cialdini, "Influence"):
+Experimento de Ellen Langer: pedir pra furar fila com "posso usar a copiadora?" → 60% compliance. Com "posso usar a copiadora PORQUE estou com pressa" → 94% compliance. Com "posso usar PORQUE preciso fazer cópias" (motivo redundante) → 93%. A palavra "porque" SOZINHA dispara compliance automática.
+Aplicação: em closes que pedem ação (raro, mas válido), use "porque" + motivo concreto.
+✓ "Comenta sua taxa de no-show porque quero ver se 12% é fora da curva ou normal."
+✗ "Comenta sua taxa." (sem porque, força fraca)
+Evite "porque" no hook (cheira a explicação preguiçosa). Use no close se for pedir algo específico.
+
 SHOW DON'T TELL (Zinsser + Heath):
 Mostre com cena ou número específico em vez de explicar com adjetivo.
 ✗ "A reunião foi intensa." → ✓ "3 sócios, 2 horas, 0 decisão."
