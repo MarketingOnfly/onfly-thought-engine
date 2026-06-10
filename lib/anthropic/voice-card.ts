@@ -28,16 +28,22 @@ function labelize<T extends { key: string; label: string }>(
   return keys.map((k) => items.find((i) => i.key === k)?.label ?? k).join(", ");
 }
 
-export function buildVoiceCard(profile: LeaderProfile): string {
+export function buildVoiceCard(
+  profile: LeaderProfile,
+  voiceSamples?: { title: string; body: string }[]
+): string {
   const traits = labelize(TONE_TRAITS, profile.tone_traits);
   const avoid = labelize(TONE_AVOID, profile.tone_avoid);
 
-  // Trecho curto dos tone_examples — o som real da pessoa.
-  // 600 chars bastam pra calibrar registro sem inflar o prompt.
-  const toneSample = profile.tone_examples?.trim()
-    ? profile.tone_examples.trim().slice(0, 600)
-    : null;
+  // Amostra real: prioriza voice_sample (texto que o líder ESCREVEU)
+  // sobre tone_examples (campo descritivo do onboarding).
+  const realSample = voiceSamples?.[0]?.body?.trim()
+    ? voiceSamples[0].body.trim().slice(0, 900)
+    : profile.tone_examples?.trim()
+      ? profile.tone_examples.trim().slice(0, 600)
+      : null;
 
+  const fingerprint = profile.voice_fingerprint?.trim() || null;
   const learned = profile.learned_preferences?.trim() || null;
 
   return [
@@ -45,8 +51,11 @@ export function buildVoiceCard(profile: LeaderProfile): string {
     `- Quem assina: ${profile.full_name}, ${profile.role}.`,
     `- Tom: ${traits}.`,
     `- NUNCA escreveria: ${avoid}.`,
-    toneSample
-      ? `- Como essa pessoa escreve de verdade (amostra real):\n"""\n${toneSample}\n"""`
+    fingerprint
+      ? `- Fingerprint da voz (extraído de textos que ELE escreveu — soberano):\n${fingerprint.slice(0, 1200)}`
+      : null,
+    realSample
+      ? `- Como essa pessoa escreve de verdade (amostra real):\n"""\n${realSample}\n"""`
       : null,
     learned
       ? `- Preferências aprendidas de feedbacks (respeite TODAS):\n${learned}`

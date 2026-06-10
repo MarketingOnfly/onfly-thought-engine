@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { ArrowLeft, Palette, User } from "lucide-react";
+import { ArrowLeft, Mic, Palette, User } from "lucide-react";
 import { createSupabaseServerClient, getServerUser } from "@/lib/supabase/server";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { LeaderProfile } from "@/lib/db/types";
 import PersonalProfileEditor from "./editor";
 import StyleEditor from "../studio/editor";
+import { VoiceSamplesPanel } from "@/components/voice-samples-panel";
 
 export default async function ProfilePage({
   searchParams,
@@ -20,7 +21,12 @@ export default async function ProfilePage({
     .single();
 
   const params = await searchParams;
-  const defaultTab = params.tab === "estilo" ? "estilo" : "pessoal";
+  const defaultTab =
+    params.tab === "estilo"
+      ? "estilo"
+      : params.tab === "voz"
+        ? "voz"
+        : "pessoal";
 
   return (
     <div className="container max-w-4xl px-6 py-10">
@@ -41,6 +47,9 @@ export default async function ProfilePage({
           <TabsTrigger value="pessoal" className="gap-2">
             <User className="h-3.5 w-3.5" /> Pessoal
           </TabsTrigger>
+          <TabsTrigger value="voz" className="gap-2">
+            <Mic className="h-3.5 w-3.5" /> Minha voz
+          </TabsTrigger>
           <TabsTrigger value="estilo" className="gap-2">
             <Palette className="h-3.5 w-3.5" /> Estilo
           </TabsTrigger>
@@ -51,6 +60,12 @@ export default async function ProfilePage({
             initial={data as LeaderProfile}
             userEmail={user.email ?? null}
           />
+        </TabsContent>
+
+        <TabsContent value="voz">
+          <div className="mt-6">
+            <VoiceSamplesPanel />
+          </div>
         </TabsContent>
 
         <TabsContent value="estilo">

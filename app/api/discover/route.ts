@@ -56,21 +56,35 @@ export async function POST() {
   const urls = context.referenceLinks.slice(0, 8).map((l) => l.url);
   const fetched = await fetchSources(urls);
 
-  // Carrega ideias recentes (≤30) pra usar como anti-pattern.
+  // Anti-loop: carrega ideias já sugeridas (≤30) E temas dos drafts já
+  // escritos (≤20). Ambos viram exclusão dura no prompt — sem isso o
+  // discovery devolvia variações dos mesmos temas a cada rodada.
   const supabase = await createSupabaseServerClient();
-  const { data: recent } = await supabase
-    .from("topic_suggestions")
-    .select("title")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-    .limit(30);
+  const [{ data: recent }, { data: recentDrafts }] = await Promise.all([
+    supabase
+      .from("topic_suggestions")
+      .select("title")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(30),
+    supabase
+      .from("content_drafts")
+      .select("topic")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(20),
+  ]);
   const recentTitles = (recent ?? []).map((r) => r.title as string);
+  const recentDraftTopics = (recentDrafts ?? [])
+    .map((d) => d.topic as string)
+    .filter(Boolean);
 
   const system = buildLeaderSystemPrompt(context);
   const userPrompt = buildDiscoveryPrompt({
     fetchedSources: fetched,
     trustedSourceUrls: context.referenceLinks.map((l) => l.url),
     recentIdeaTitles: recentTitles,
+    recentDraftTopics,
     todayISO: new Date().toISOString().slice(0, 10),
   });
 

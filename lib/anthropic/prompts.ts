@@ -38,6 +38,9 @@ interface LeaderContext {
   referenceLinks: ReferenceLink[];
   leaderDocuments: LeaderDocument[];
   orgDocuments: OrgDocument[];
+  // Textos escritos PELO líder — fonte soberana do tom. Opcional pra
+  // retrocompat com callers que ainda não carregam (ex: scripts antigos).
+  voiceSamples?: { title: string; body: string }[];
 }
 
 /**
@@ -412,9 +415,43 @@ export function buildLeaderSystemPrompt(ctx: LeaderContext): string {
   // Antes a voz ficava enterrada no meio de ~10k palavras de regra e teoria
   // (zona cega do modelo). Agora vem logo após a missão: o modelo calibra
   // o registro ANTES de ler qualquer outra coisa.
-  sections.push(
-    ["═══ A VOZ QUE VOCÊ VAI ASSINAR (o mais importante deste prompt) ═══", describeLeader(ctx.leader)].join("\n")
-  );
+  //
+  // SOBERANIA: quando o líder cadastrou TEXTOS PRÓPRIOS (voice_samples),
+  // eles + o fingerprint extraído são a fonte SUPREMA do tom — acima de
+  // learned_preferences, acima de qualquer regra geral deste prompt.
+  // Textos que ele escreveu com a própria mão > qualquer descrição.
+  const voiceParts: string[] = [
+    "═══ A VOZ QUE VOCÊ VAI ASSINAR (o mais importante deste prompt) ═══",
+  ];
+
+  const samples = (ctx.voiceSamples ?? []).slice(0, 3);
+  const fingerprint = ctx.leader.voice_fingerprint?.trim();
+  if (samples.length || fingerprint) {
+    voiceParts.push(
+      "FONTE SOBERANA DO TOM — textos que o líder ESCREVEU COM A PRÓPRIA MÃO.",
+      "Hierarquia inegociável: estes textos > fingerprint > preferências aprendidas > qualquer regra geral abaixo. Se uma regra deste prompt conflitar com o jeito que o líder escreve nestes textos, IGNORE A REGRA e siga o texto dele.",
+      ""
+    );
+    if (fingerprint) {
+      voiceParts.push(
+        "FINGERPRINT DA VOZ (extraído dos textos dele):",
+        fingerprint,
+        ""
+      );
+    }
+    if (samples.length) {
+      voiceParts.push(
+        `TEXTOS REAIS DO LÍDER (imite RITMO, VOCABULÁRIO, ABERTURA e FECHAMENTO — nunca o tema):`,
+        ...samples.map(
+          (s, i) =>
+            `--- Texto ${i + 1}: ${s.title} ---\n${s.body.slice(0, 2500)}`
+        ),
+        ""
+      );
+    }
+  }
+  voiceParts.push(describeLeader(ctx.leader));
+  sections.push(voiceParts.join("\n"));
 
   // ─── 3. REGRAS DE ESCRITA (destiladas) ─────────────────────────────────────
   const personalHardRules = describePersonalHardRules(ctx.leader);
@@ -788,10 +825,29 @@ export function buildReviseUserPrompt(opts: {
   ].join("\n");
 }
 
+/**
+ * Lentes de descoberta — rotacionadas a cada chamada pra evitar o loop
+ * de "mesmos temas, mesmos ângulos". Sem rotação, o agente faz sempre
+ * as mesmas buscas e devolve variações das mesmas pautas.
+ */
+const DISCOVERY_LENSES = [
+  "REGULAÇÃO E COMPLIANCE: mudanças regulatórias, fiscais ou trabalhistas recentes que afetam o setor do líder. Ângulo: o que ninguém percebeu na letra miúda.",
+  "MACROECONOMIA APLICADA: juros, câmbio, inflação — mas SÓ com tradução pro dia a dia do gestor (custo de viagem, budget, headcount).",
+  "CASE INTERNACIONAL AINDA SEM ECO NO BRASIL: movimento de empresa gringa que vai chegar aqui em 12-24 meses. Ângulo: antecipação.",
+  "DADO CONTRAINTUITIVO DE RELATÓRIO NOVO: pesquisa/estudo recém-publicado com número que contradiz o senso comum do setor.",
+  "MOVIMENTO DE CONCORRENTE OU ADJACENTE: captação, demissão, pivot, lançamento de player próximo do mercado do líder.",
+  "GESTÃO DE PESSOAS E CULTURA: tendência de trabalho/liderança quente AGORA (RTO, IA no trabalho, burnout, contratação).",
+  "TECNOLOGIA APLICADA AO SETOR: lançamento de IA/ferramenta com impacto direto no trabalho da audiência do líder.",
+  "CONTRARIAN A UMA PAUTA QUENTE: pegue a notícia mais comentada da semana no nicho e procure o ângulo que ninguém defendeu.",
+  "HISTÓRIA ANTIGA COM LIÇÃO ATUAL: aniversário de evento de mercado (falência, fusão, lançamento) que ilumina algo de hoje.",
+  "BASTIDOR DE FUNÇÃO: dor operacional específica do cargo da audiência que nunca vira post (planilha, ritual, aprovação, reunião).",
+];
+
 export function buildDiscoveryPrompt(opts: {
   fetchedSources: { url: string; title: string; content: string }[];
   trustedSourceUrls: string[];
   recentIdeaTitles: string[];
+  recentDraftTopics?: string[];
   todayISO: string;
 }): string {
   const sources = opts.fetchedSources
@@ -805,17 +861,25 @@ export function buildDiscoveryPrompt(opts: {
   const recent = opts.recentIdeaTitles.length
     ? opts.recentIdeaTitles.map((t) => `- ${t}`).join("\n")
     : "(nenhuma)";
+  const recentDrafts = opts.recentDraftTopics?.length
+    ? opts.recentDraftTopics.map((t) => `- ${t}`).join("\n")
+    : "(nenhum)";
+
+  // Sorteia 4 lentes por chamada — a rotação garante que duas rodadas
+  // seguidas de discovery exploram territórios diferentes.
+  const lenses = [...DISCOVERY_LENSES]
+    .sort(() => Math.random() - 0.5)
+    .slice(0, 4);
 
   return [
     `Hoje é ${opts.todayISO}. Você é um agente de descoberta de pauta pra o líder descrito no system prompt.`,
     "",
     "OBJETIVO: devolver 8 a 12 ideias de conteúdo (posts ou artigos) que o líder PODE escrever HOJE, com diversidade radical de ângulo, formato e tema.",
     "",
-    "VOCÊ TEM A FERRAMENTA web_search. USE de verdade — pelo menos 3 buscas, cada uma com query diferente. Combinações úteis:",
-    "- Notícias B2B brasileiras dos últimos 7 dias relacionadas ao posicionamento do líder.",
-    "- Estatísticas/relatórios novos que cruzam com os pilares do líder.",
-    "- Movimentos recentes de concorrentes ou empresas-referência (Pipefy, Hubspot Brasil, Conta Azul, Stone, etc).",
-    "- Posts em alta de criadores que o líder acompanha (busque o nome do criador + ano corrente).",
+    "🔎 LENTES OBRIGATÓRIAS DESTA RODADA (sorteadas — pelo menos 1 ideia por lente; é isso que impede o loop de sempre os mesmos temas):",
+    ...lenses.map((l, i) => `${i + 1}. ${l}`),
+    "",
+    "VOCÊ TEM A FERRAMENTA web_search. USE de verdade — pelo menos 4 buscas, UMA POR LENTE acima, cada uma com query diferente.",
     "",
     "FONTES QUE O LÍDER JÁ CONFIA (use como qualidade de referência, e quando possível resgate matéria fresca delas via web_search):",
     `- ${trusted}`,
@@ -823,8 +887,14 @@ export function buildDiscoveryPrompt(opts: {
     "MATÉRIA-PRIMA JÁ EXTRAÍDA DA BIBLIOTECA (use COMO PONTO DE PARTIDA, não como única fonte):",
     sources,
     "",
-    "ANTI-PATTERN — IDEIAS RECENTES DESSE LÍDER (NÃO repita assunto nem ângulo. Procure tema novo):",
+    "🚫 ANTI-LOOP (regra dura de exclusão):",
+    "Ideias já sugeridas a esse líder — se a sua ideia toca o MESMO TEMA CENTRAL de qualquer item abaixo (mesmo com ângulo diferente), DESCARTE e busque outra:",
     recent,
+    "",
+    "Temas sobre os quais o líder JÁ ESCREVEU recentemente (idem — território saturado, só volte aqui se houver fato NOVO desta semana que mude a leitura):",
+    recentDrafts,
+    "",
+    "APRENDIZADO: o system prompt traz as preferências aprendidas desse líder (o que rendeu nota alta). Priorize ângulos compatíveis com esses padrões, MAS reserve 2 ideias pra territórios que ele NUNCA tocou (exploração).",
     "",
     "REGRAS DAS IDEIAS (todas obrigatórias):",
     "- Cada ideia traz uma tese AUTORAL. Sem \"a importância de X\", sem \"5 dicas\", sem repercutir notícia sem ângulo próprio.",

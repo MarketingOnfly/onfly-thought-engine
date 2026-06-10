@@ -101,7 +101,10 @@ export async function POST(request: NextRequest) {
   // Voice card compacto — vai pra TODAS as fases que reescrevem texto
   // (polish, repair, fabrication-fix). Sem ele essas fases editavam
   // "no escuro" e lavavam a voz do líder a cada passada.
-  const voiceCard = buildVoiceCard(context.leader as LeaderProfile);
+  const voiceCard = buildVoiceCard(
+    context.leader as LeaderProfile,
+    context.voiceSamples
+  );
 
   // ============================================================
   // BARREIRA ANTI-FABRICAÇÃO (REGRA ZERO em código)

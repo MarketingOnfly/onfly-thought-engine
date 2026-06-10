@@ -41,8 +41,21 @@ export interface LeaderProfile {
   notification_digest: "never" | "daily" | "weekly";
   // preferências aprendidas a partir do feedback do líder (migration 012)
   learned_preferences: string | null;
+  // fingerprint de voz extraído dos voice_samples (migration 018) —
+  // fonte SOBERANA do tom, acima de learned_preferences e regras gerais
+  voice_fingerprint?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// Texto escrito PELO líder (post real, e-mail, artigo) — migration 018.
+// Fonte soberana do tom de voz.
+export interface VoiceSample {
+  id: string;
+  user_id: string;
+  title: string;
+  body: string;
+  created_at: string;
 }
 
 export interface ContentFeedback {
