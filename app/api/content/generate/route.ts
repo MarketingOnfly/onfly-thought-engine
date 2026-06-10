@@ -610,9 +610,16 @@ Esse é o pior erro que esse motor pode cometer: fingir que leu o link e inventa
       org_docs: (context.orgDocuments ?? [])
         .map((d) => d.content)
         .join("\n"),
-      leader_docs: (context.leaderDocuments ?? [])
-        .map((d) => d.content)
-        .join("\n"),
+      leader_docs: [
+        ...(context.leaderDocuments ?? []).map((d) => d.content),
+        // Story Bank é fonte LEGÍTIMA de número/caso — sem isso o
+        // detector flagraria os fatos reais do líder como fabricados.
+        ...(context.stories ?? []).map(
+          (s) => `${s.title}\n${s.story}\n${s.facts ?? ""}`
+        ),
+        // Voice samples também (líder pode reusar número de post antigo)
+        ...(context.voiceSamples ?? []).map((v) => v.body),
+      ].join("\n"),
     };
 
     type CheckedVersion = (typeof beforeFabricationCheck)[number] & {

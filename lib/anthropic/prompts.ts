@@ -41,6 +41,14 @@ interface LeaderContext {
   // Textos escritos PELO líder — fonte soberana do tom. Opcional pra
   // retrocompat com callers que ainda não carregam (ex: scripts antigos).
   voiceSamples?: { title: string; body: string }[];
+  // Story Bank — histórias/números reais do líder (migration 019).
+  // Única fonte legítima de caso/número específico além do input.
+  stories?: {
+    title: string;
+    story: string;
+    facts: string | null;
+    times_used: number;
+  }[];
 }
 
 /**
@@ -452,6 +460,32 @@ export function buildLeaderSystemPrompt(ctx: LeaderContext): string {
   }
   voiceParts.push(describeLeader(ctx.leader));
   sections.push(voiceParts.join("\n"));
+
+  // ─── 2.5 STORY BANK — estoque de especificidade VERDADEIRA ────────────────
+  // Resolve a tensão "post bom precisa de caso/número concreto" vs
+  // "REGRA ZERO: nunca invente". Histórias registradas pelo próprio
+  // líder são a ÚNICA fonte legítima de especificidade além do input
+  // da geração. Menos usadas vêm primeiro (anti-repetição).
+  const stories = (ctx.stories ?? []).slice(0, 6);
+  if (stories.length) {
+    sections.push(
+      [
+        "═══ BANCO DE HISTÓRIAS REAIS DO LÍDER ═══",
+        "Casos e números VERDADEIROS que o líder registrou. Quando o post pedir um exemplo/número concreto e o input não trouxer um, USE UMA DESTAS (a mais relevante pro tema) — em vez de inventar ou deixar vago.",
+        "Regras: use NO MÁXIMO uma história por post. Não distorça números. Se nenhuma é relevante pro tema, não force — siga sem caso.",
+        "",
+        ...stories.map((s, i) =>
+          [
+            `[${i + 1}] ${s.title}${s.times_used > 0 ? ` (já usada ${s.times_used}x — prefira menos usadas)` : " (inédita)"}`,
+            s.story.slice(0, 900),
+            s.facts ? `Números/dados reais: ${s.facts.slice(0, 400)}` : "",
+          ]
+            .filter(Boolean)
+            .join("\n")
+        ),
+      ].join("\n\n")
+    );
+  }
 
   // ─── 3. REGRAS DE ESCRITA (destiladas) ─────────────────────────────────────
   const personalHardRules = describePersonalHardRules(ctx.leader);

@@ -2,6 +2,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type {
   LeaderDocument,
   LeaderProfile,
+  LeaderStory,
   OrgDocument,
   ReferenceLink,
   ReferenceProfile,
@@ -16,6 +17,8 @@ export interface LeaderContextBundle {
   orgDocuments: OrgDocument[];
   // Textos escritos PELO líder — fonte soberana do tom (migration 018)
   voiceSamples: VoiceSample[];
+  // Histórias/números reais do líder — Story Bank (migration 019)
+  stories: LeaderStory[];
 }
 
 export async function loadLeaderContext(
@@ -23,8 +26,15 @@ export async function loadLeaderContext(
 ): Promise<LeaderContextBundle | null> {
   const supabase = await createSupabaseServerClient();
 
-  const [profileRes, refProfilesRes, refLinksRes, docsRes, orgDocsRes, voiceRes] =
-    await Promise.all([
+  const [
+    profileRes,
+    refProfilesRes,
+    refLinksRes,
+    docsRes,
+    orgDocsRes,
+    voiceRes,
+    storiesRes,
+  ] = await Promise.all([
       supabase
         .from("leader_profiles")
         .select("*")
@@ -56,6 +66,14 @@ export async function loadLeaderContext(
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
         .limit(6),
+      supabase
+        .from("leader_stories")
+        .select("*")
+        .eq("user_id", userId)
+        // Menos usadas primeiro — anti-repetição de história
+        .order("times_used", { ascending: true })
+        .order("created_at", { ascending: false })
+        .limit(10),
     ]);
 
   if (profileRes.error || !profileRes.data) return null;
@@ -66,8 +84,9 @@ export async function loadLeaderContext(
     referenceLinks: (refLinksRes.data ?? []) as ReferenceLink[],
     leaderDocuments: (docsRes.data ?? []) as LeaderDocument[],
     orgDocuments: (orgDocsRes.data ?? []) as OrgDocument[],
-    // Se a migration 018 ainda não rodou, a query falha silenciosamente
-    // e voiceSamples fica vazio — pipeline segue com tone_examples.
+    // Se as migrations 018/019 ainda não rodaram, as queries falham
+    // silenciosamente e os arrays ficam vazios — pipeline segue normal.
     voiceSamples: (voiceRes.data ?? []) as VoiceSample[],
+    stories: (storiesRes.data ?? []) as LeaderStory[],
   };
 }

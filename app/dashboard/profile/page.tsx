@@ -6,6 +6,7 @@ import type { LeaderProfile } from "@/lib/db/types";
 import PersonalProfileEditor from "./editor";
 import StyleEditor from "../studio/editor";
 import { VoiceSamplesPanel } from "@/components/voice-samples-panel";
+import { StoryBankPanel } from "@/components/story-bank-panel";
 
 export default async function ProfilePage({
   searchParams,
@@ -63,8 +64,9 @@ export default async function ProfilePage({
         </TabsContent>
 
         <TabsContent value="voz">
-          <div className="mt-6">
+          <div className="mt-6 space-y-6">
             <VoiceSamplesPanel />
+            <StoryBankPanel />
           </div>
         </TabsContent>
 

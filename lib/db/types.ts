@@ -58,6 +58,19 @@ export interface VoiceSample {
   created_at: string;
 }
 
+// História/caso/número REAL do líder — migration 019 (Story Bank).
+// Única fonte legítima de especificidade além do input da geração.
+export interface LeaderStory {
+  id: string;
+  user_id: string;
+  title: string;
+  story: string;
+  facts: string | null;
+  times_used: number;
+  last_used_at: string | null;
+  created_at: string;
+}
+
 export interface ContentFeedback {
   id: string;
   user_id: string;

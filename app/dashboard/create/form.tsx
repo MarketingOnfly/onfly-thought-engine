@@ -8,6 +8,7 @@ import {
   ChevronDown,
   FileText,
   Linkedin,
+  Loader2,
   Paperclip,
   Sliders,
   Sparkles,
@@ -93,6 +94,32 @@ export default function CreateForm({
   } | null>(null);
 
   const ideaReady = idea.trim().length >= 8;
+
+  // Modo entrevista (benchmark Supergrow "Postcast"): a IA pergunta,
+  // o líder responde, as respostas viram fatos verificados do briefing.
+  const [interviewQuestions, setInterviewQuestions] = useState<string[]>([]);
+  const [interviewAnswers, setInterviewAnswers] = useState<string[]>([]);
+  const [interviewLoading, setInterviewLoading] = useState(false);
+
+  async function startInterview() {
+    setInterviewLoading(true);
+    try {
+      const res = await fetch("/api/interview", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ topic: idea.trim().slice(0, 2000) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(data.questions)) {
+        setInterviewQuestions(data.questions);
+        setInterviewAnswers(new Array(data.questions.length).fill(""));
+      } else {
+        setError(data.error ?? "Não consegui montar as perguntas.");
+      }
+    } finally {
+      setInterviewLoading(false);
+    }
+  }
 
   // Quando vem do discovery: adiciona o source como anexo e extrai
   // automaticamente. Roda 1x no mount.
@@ -198,18 +225,38 @@ export default function CreateForm({
       brief = text.slice(80).trim() || null;
     }
 
+    // Respostas da entrevista viram FATOS VERIFICADOS do briefing —
+    // matéria-prima verdadeira fornecida pelo próprio líder.
+    const answeredPairs = interviewQuestions
+      .map((q, i) => ({ q, a: (interviewAnswers[i] ?? "").trim() }))
+      .filter((p) => p.a.length > 0);
+    const interviewBlock = answeredPairs.length
+      ? `ENTREVISTA — FATOS FORNECIDOS PELO LÍDER AGORA (fonte verificada, use como matéria-prima central):\n${answeredPairs
+          .map((p) => `P: ${p.q}\nR: ${p.a}`)
+          .join("\n\n")}`
+      : null;
+
     // Empacota anexos como bloco de contexto pra prompt
     const contextBlock = attachmentsToPromptBlock(attachments);
-    const extraCombined = [extra.trim() || null, contextBlock || null]
+    const extraCombined = [
+      interviewBlock,
+      extra.trim() || null,
+      contextBlock || null,
+    ]
       .filter(Boolean)
       .join("\n\n---\n\n");
 
     // Reúne os key_facts de todas as compreensões dos materiais anexados.
     // O backend usa isso pra verificar que o draft cita pelo menos um.
-    const mustCiteFacts = attachments
-      .filter((a) => a.status === "ready" && a.comprehension?.key_facts?.length)
-      .flatMap((a) => a.comprehension?.key_facts ?? [])
-      .slice(0, 12);
+    // Respostas da entrevista também entram (são fatos citáveis).
+    const mustCiteFacts = [
+      ...answeredPairs.map((p) => p.a),
+      ...attachments
+        .filter(
+          (a) => a.status === "ready" && a.comprehension?.key_facts?.length
+        )
+        .flatMap((a) => a.comprehension?.key_facts ?? []),
+    ].slice(0, 12);
 
     // Lista de materiais que o líder anexou MAS o comprehend falhou em ler
     // (substack com paywall, cloudflare, etc). O backend ATIVA web_search
@@ -291,6 +338,70 @@ export default function CreateForm({
           <p className="mt-2 text-xs text-muted-foreground">
             A primeira linha vira o tema. O resto serve de briefing.
           </p>
+
+          {/* MODO ENTREVISTA — extrai fatos reais do líder antes de gerar.
+              Em vez de o motor inventar especificidade (proibido) ou
+              entregar texto vago, ele pergunta. As respostas viram briefing. */}
+          {ideaReady && interviewQuestions.length === 0 && (
+            <button
+              type="button"
+              onClick={() => void startInterview()}
+              disabled={interviewLoading}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-xl border border-dashed border-brand-300 bg-brand-50/40 px-3 py-2 text-xs font-medium text-brand-700 transition hover:bg-brand-50"
+            >
+              {interviewLoading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="h-3.5 w-3.5" />
+              )}
+              Me entrevista sobre esse tema (3 perguntas → post com SEUS fatos)
+            </button>
+          )}
+
+          {interviewQuestions.length > 0 && (
+            <div className="mt-3 space-y-3 rounded-xl border border-brand-200 bg-brand-50/30 p-4">
+              <p className="text-xs font-medium text-brand-800">
+                Responde rapidinho (1-3 frases cada — pode ser corrido, sem
+                capricho). Suas respostas viram a matéria-prima do post:
+              </p>
+              {interviewQuestions.map((q, i) => (
+                <div key={i}>
+                  <p className="text-xs font-medium text-foreground">
+                    {i + 1}. {q}
+                  </p>
+                  <Textarea
+                    value={interviewAnswers[i] ?? ""}
+                    onChange={(e) =>
+                      setInterviewAnswers((prev) => {
+                        const next = [...prev];
+                        next[i] = e.target.value;
+                        return next;
+                      })
+                    }
+                    rows={2}
+                    className="mt-1 text-sm"
+                    placeholder="Sua resposta…"
+                  />
+                </div>
+              ))}
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] text-muted-foreground">
+                  Respostas em branco são ignoradas. O que você escrever
+                  entra como fato verificado na geração.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInterviewQuestions([]);
+                    setInterviewAnswers([]);
+                  }}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Descartar entrevista
+                </button>
+              </div>
+            </div>
+          )}
         </section>
 
         {/* MATERIAL DE APOIO — anexos */}
