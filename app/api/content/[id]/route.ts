@@ -27,6 +27,37 @@ export async function PATCH(
 
   const { id } = await params;
   const supabase = await createSupabaseServerClient();
+
+  // CAPTURA DE EDIÇÃO MANUAL — o sinal de aprendizado mais forte que
+  // existe. Quando o líder edita o texto na mão antes de aprovar, o
+  // diff (gerado → editado) mostra EXATAMENTE o que o motor errou.
+  // Guardamos o "antes" em draft_versions com reason rastreável;
+  // o "depois" fica no final_markdown da própria row. O
+  // learn-from-feedback usa esses pares como exemplos antes→depois.
+  if (parsed.data.final_markdown !== undefined) {
+    const { data: current } = await supabase
+      .from("content_drafts")
+      .select("draft_markdown, final_markdown")
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    const before = current?.final_markdown ?? current?.draft_markdown;
+    if (
+      before &&
+      before.trim() !== parsed.data.final_markdown.trim() &&
+      // Ignora micro-edições (typo fix) — só captura edição substancial
+      Math.abs(before.length - parsed.data.final_markdown.length) > 30
+    ) {
+      await supabase.from("draft_versions").insert({
+        content_draft_id: id,
+        user_id: user.id,
+        body: before,
+        reason: "edição manual do líder",
+      });
+    }
+  }
+
   const { data, error } = await supabase
     .from("content_drafts")
     .update(parsed.data)

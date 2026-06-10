@@ -46,6 +46,25 @@ export async function POST(
     typeof body?.comment === "string" && body.comment.trim().length
       ? body.comment.trim().slice(0, 2000)
       : null;
+  // Tags estruturadas (chips na UI) — sinal limpo pro aprendizado,
+  // muito mais acionável que comentário livre. Whitelist fechada.
+  const VALID_TAGS = new Set([
+    "cara_de_ia",
+    "inventou_fato",
+    "ignorou_material",
+    "jargao",
+    "sem_historia",
+    "hook_fraco",
+    "tom_errado",
+    "muito_longo",
+    "muito_curto",
+    "generico",
+  ]);
+  const tags: string[] = Array.isArray(body?.tags)
+    ? (body.tags as unknown[])
+        .filter((t): t is string => typeof t === "string" && VALID_TAGS.has(t))
+        .slice(0, 10)
+    : [];
 
   if (!Number.isFinite(ratingRaw) || ratingRaw < 1 || ratingRaw > 5) {
     return NextResponse.json(
@@ -78,6 +97,7 @@ export async function POST(
         content_draft_id: id,
         rating,
         comment,
+        tags,
       },
       { onConflict: "content_draft_id" }
     )
@@ -104,34 +124,59 @@ export async function POST(
 }
 
 /**
- * Pega os últimos 15 feedbacks + drafts e roda o Claude pra sintetizar
- * em learned_preferences. Roda em background depois do POST.
+ * Recalcula learned_preferences a partir de TRÊS sinais:
+ *  1. Últimos 15 feedbacks (rating + comentário + tags estruturadas)
+ *  2. Últimos 8 pares de EDIÇÃO MANUAL (texto gerado → texto que o
+ *     líder editou na mão) — o sinal mais forte que existe
+ * Roda em background (after) depois do POST.
  */
 async function recomputeLearnedPreferences(userId: string) {
   const supabase = await createSupabaseServerClient();
 
-  // últimos 15 feedbacks
+  // últimos 15 feedbacks (agora com tags)
   const { data: feedbacks } = await supabase
     .from("content_feedback")
     .select(
-      "rating, comment, created_at, content_draft_id, content_draft:content_drafts(topic, draft_markdown)"
+      "rating, comment, tags, created_at, content_draft_id, content_draft:content_drafts(topic, draft_markdown)"
     )
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(15);
 
-  if (!feedbacks?.length) return;
+  // pares de edição manual: o "antes" está em draft_versions com a
+  // reason rastreável; o "depois" é o final_markdown do draft.
+  const { data: manualVersions } = await supabase
+    .from("draft_versions")
+    .select(
+      "body, content_draft_id, created_at, content_draft:content_drafts(topic, final_markdown)"
+    )
+    .eq("user_id", userId)
+    .eq("reason", "edição manual do líder")
+    .order("created_at", { ascending: false })
+    .limit(8);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const samples = (feedbacks as any[]).map((f) => ({
+  const editPairs = ((manualVersions as any[]) ?? [])
+    .filter((v) => v.content_draft?.final_markdown && v.body)
+    .map((v) => ({
+      topic: v.content_draft.topic ?? "",
+      before: v.body as string,
+      after: v.content_draft.final_markdown as string,
+    }));
+
+  if (!feedbacks?.length && !editPairs.length) return;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const samples = ((feedbacks as any[]) ?? []).map((f) => ({
     rating: f.rating,
     comment: f.comment,
+    tags: Array.isArray(f.tags) ? (f.tags as string[]) : [],
     draft_topic: f.content_draft?.topic ?? "",
     draft_text: f.content_draft?.draft_markdown ?? null,
     created_at: f.created_at,
   }));
 
-  const preferences = await learnFromFeedback(samples);
+  const preferences = await learnFromFeedback(samples, editPairs);
   if (!preferences) return;
 
   await supabase

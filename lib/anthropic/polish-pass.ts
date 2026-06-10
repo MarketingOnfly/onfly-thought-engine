@@ -320,7 +320,9 @@ const PT_BR_CLICHES = [
   "no fim, tudo é sobre",
 ];
 
-const SYSTEM_PROMPT = `Você é um editor cruel. Recebe um draft em pt-BR e devolve uma versão melhor.
+const SYSTEM_PROMPT = `Você é um editor CIRÚRGICO, não um reescritor. Recebe um draft em pt-BR e devolve o MESMO texto com os defeitos corrigidos.
+
+PRINCÍPIO MESTRE: cada frase que NÃO viola nenhuma regra abaixo fica INTOCADA, palavra por palavra. Você só mexe onde há defeito. Editor que "melhora" frase boa lava a voz do autor e produz prosa neutra de IA — exatamente o que combatemos.
 
 🔒 REGRA ZERO (acima de tudo): NUNCA INVENTE ABSOLUTAMENTE NADA.
 Você EDITA o que veio no draft. Você NÃO ADICIONA fato novo que não estava lá.
@@ -371,7 +373,7 @@ VOCABULÁRIO BANIDO (palavras IA-coded em pt-BR — corte ou substitua):
 - jornada, ecossistema, vibrante, intricado, robusto, holístico, sinergia, fomentar, alavancar, pivotal, contemplar, exemplifica, panorama, marca indelével, abraçar (figurado)
 - Anglicismos crus: leverage, deliver value, drive results, unlock, empower, seamless, cutting-edge, game-changer, stakeholder, mindset, deep dive
 
-2. CUT 20%: o draft tem fios soltos, repetição e frases que não pagam aluguel. Tire 20% mantendo a tese intacta. Cada frase que sobra precisa carregar peso. Prefere cortar do MEIO (não do início ou fim).
+2. CORTE SÓ O QUE NÃO PAGA ALUGUEL: frases repetidas, fios soltos, explicação do óbvio. Se o draft JÁ está enxuto, NÃO corte nada — corte compulsório lava a voz. NUNCA corte a digressão pessoal, o aposto sardônico ou a irregularidade que dá cara de humano ao texto.
 
 3. SENSORIAL CHECK: o texto precisa ter no mínimo 2 imagens CONCRETAS (hora, lugar, pessoa, objeto, número específico). Se tem zero ou uma, força inserir pelo menos uma cena concreta sem alongar.
 
@@ -406,6 +408,10 @@ export async function polishPass(opts: {
   // polish verifica que o draft cita pelo menos 1. Se nenhum, alerta
   // o modelo explicitamente pra incluir um durante o polish.
   mustCiteFacts?: string[];
+  // Cartão de voz do líder (buildVoiceCard). SEM ele, o polish edita
+  // "no escuro" e neutraliza a voz — maior causa de cara de IA no
+  // texto final. Toda chamada vinda do pipeline de geração DEVE passar.
+  voiceCard?: string;
 }): Promise<string> {
   if (!opts.draft?.trim()) return opts.draft ?? "";
 
@@ -443,18 +449,31 @@ ${opts.draft}
 
 Devolva o texto polido apenas.`;
 
+  // System em 2 blocos cacheáveis: regras genéricas (estáveis entre
+  // líderes) + voice card (estável por líder durante a geração).
+  const systemBlocks: Array<{
+    type: "text";
+    text: string;
+    cache_control?: { type: "ephemeral" };
+  }> = [
+    {
+      type: "text",
+      text: SYSTEM_PROMPT,
+      cache_control: { type: "ephemeral" },
+    },
+  ];
+  if (opts.voiceCard) {
+    systemBlocks.push({
+      type: "text",
+      text: opts.voiceCard,
+      cache_control: { type: "ephemeral" },
+    });
+  }
+
   const response = await anthropic.messages.create({
     model: FAST_MODEL,
     max_tokens: opts.format === "linkedin_post" ? 1500 : 4500,
-    // cache_control no system pra reutilizar entre N variações da mesma
-    // geração (cada uma chama polishPass com o mesmo system grande).
-    system: [
-      {
-        type: "text",
-        text: SYSTEM_PROMPT,
-        cache_control: { type: "ephemeral" },
-      },
-    ],
+    system: systemBlocks,
     messages: [{ role: "user", content: userPrompt }],
   });
 

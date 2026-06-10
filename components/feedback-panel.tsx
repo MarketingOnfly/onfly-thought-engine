@@ -23,6 +23,25 @@ const RATING_LABELS: Record<number, string> = {
   5: "Ficou exatamente como queria",
 };
 
+/**
+ * Chips de problemas comuns — viram tags estruturadas no feedback.
+ * Sinal MUITO mais acionável pro aprendizado que comentário livre:
+ * "jargao" marcado 3x = padrão claro; "achei meio técnico" no texto
+ * livre = ambíguo.
+ */
+const FEEDBACK_TAGS: { key: string; label: string }[] = [
+  { key: "cara_de_ia", label: "Cara de IA" },
+  { key: "inventou_fato", label: "Inventou fato" },
+  { key: "ignorou_material", label: "Ignorou material" },
+  { key: "jargao", label: "Jargão demais" },
+  { key: "sem_historia", label: "Sem história" },
+  { key: "hook_fraco", label: "Hook fraco" },
+  { key: "tom_errado", label: "Tom não é meu" },
+  { key: "muito_longo", label: "Muito longo" },
+  { key: "muito_curto", label: "Muito curto" },
+  { key: "generico", label: "Genérico" },
+];
+
 const PRESET_INSTRUCTIONS: Record<string, string> = {
   ousado:
     "Mantém a tese mas torna o texto mais ousado e provocador. Hook mais ácido. Fechamento que aposta numa visão de futuro. Cortar qualquer floreio que sobrar.",
@@ -58,6 +77,7 @@ export function FeedbackPanel({ draftId, onRevised }: RefinePanelProps) {
   const [rating, setRating] = useState<number | null>(null);
   const [hover, setHover] = useState<number | null>(null);
   const [text, setText] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
 
   const [savingFeedback, setSavingFeedback] = useState(false);
   const [refining, setRefining] = useState(false);
@@ -76,6 +96,9 @@ export function FeedbackPanel({ draftId, onRevised }: RefinePanelProps) {
             setExisting(data.feedback);
             setRating(data.feedback.rating);
             setText(data.feedback.comment ?? "");
+            setTags(
+              Array.isArray(data.feedback.tags) ? data.feedback.tags : []
+            );
           }
         }
       } finally {
@@ -93,7 +116,7 @@ export function FeedbackPanel({ draftId, onRevised }: RefinePanelProps) {
       `/api/content/${draftId}/feedback`,
       {
         method: "POST",
-        body: JSON.stringify({ rating, comment: text.trim() || null }),
+        body: JSON.stringify({ rating, comment: text.trim() || null, tags }),
       }
     );
     setSavingFeedback(false);
@@ -143,21 +166,35 @@ export function FeedbackPanel({ draftId, onRevised }: RefinePanelProps) {
    */
   async function handleMainAction() {
     const hasText = text.trim().length >= 5;
+    const hasTags = tags.length > 0;
     const hasRating = rating !== null;
 
-    if (hasRating && hasText && rating! <= 3 && onRevised) {
-      // Combina os 2: salva feedback + refaz com o texto
+    // Tags marcadas viram instrução legível pro refazer
+    const tagInstructions = tags
+      .map((t) => FEEDBACK_TAGS.find((f) => f.key === t)?.label ?? t)
+      .join("; ");
+
+    if (hasRating && (hasText || hasTags) && rating! <= 3 && onRevised) {
+      // Combina: salva feedback (com tags) + refaz com texto + tags
       const saved = await saveFeedback();
       if (!saved) return;
-      await applyRefine(
-        `Apliquei esse feedback (nota ${saved.rating}/5): "${text.trim()}". Reescreve o texto inteiro corrigindo esses pontos. Mantém o tema e o tamanho aproximado.`
-      );
+      const parts = [
+        `Apliquei esse feedback (nota ${saved.rating}/5)`,
+        hasTags ? `Problemas marcados: ${tagInstructions}.` : "",
+        hasText ? `Comentário: "${text.trim()}".` : "",
+        "Reescreve o texto inteiro corrigindo esses pontos. Mantém o tema e o tamanho aproximado.",
+      ].filter(Boolean);
+      await applyRefine(parts.join(" "));
     } else if (hasRating) {
       // Só salva feedback (com ou sem texto positivo)
       await saveFeedback();
-    } else if (hasText && onRevised) {
+    } else if ((hasText || hasTags) && onRevised) {
       // Só refina (sem nota)
-      await applyRefine(text.trim());
+      const parts = [
+        hasTags ? `Corrige estes problemas: ${tagInstructions}.` : "",
+        text.trim(),
+      ].filter(Boolean);
+      await applyRefine(parts.join(" "));
     }
   }
 
@@ -167,7 +204,9 @@ export function FeedbackPanel({ draftId, onRevised }: RefinePanelProps) {
 
   const display = hover ?? rating ?? 0;
   const hasFeedback = !!existing;
-  const hasText = text.trim().length >= 5;
+  // "Sinal" de ajuste = texto livre OU chips marcados. Os dois alimentam
+  // a instrução de refazer.
+  const hasText = text.trim().length >= 5 || tags.length > 0;
   const hasRating = rating !== null;
   const busy = savingFeedback || refining;
 
@@ -278,6 +317,39 @@ export function FeedbackPanel({ draftId, onRevised }: RefinePanelProps) {
                   {RATING_LABELS[display]}
                 </span>
               )}
+            </div>
+          </div>
+
+          {/* CHIPS DE PROBLEMAS — viram tags estruturadas pro aprendizado */}
+          <div className="mt-4">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              O que pegou? (marca os que se aplicam — vira aprendizado direto)
+            </p>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {FEEDBACK_TAGS.map((t) => {
+                const active = tags.includes(t.key);
+                return (
+                  <button
+                    key={t.key}
+                    type="button"
+                    onClick={() =>
+                      setTags((prev) =>
+                        active
+                          ? prev.filter((x) => x !== t.key)
+                          : [...prev, t.key]
+                      )
+                    }
+                    className={cn(
+                      "rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors",
+                      active
+                        ? "border-destructive bg-destructive/10 text-destructive"
+                        : "border-border bg-background text-muted-foreground hover:bg-secondary"
+                    )}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 

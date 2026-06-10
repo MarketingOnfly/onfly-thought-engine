@@ -51,6 +51,9 @@ export interface ContentFeedback {
   content_draft_id: string;
   rating: 1 | 2 | 3 | 4 | 5;
   comment: string | null;
+  // Tags estruturadas (chips) — migration 017. Sinal limpo pro
+  // aprendizado: "jargao" marcado 3x é padrão; comentário livre é ambíguo.
+  tags?: string[];
   created_at: string;
 }
 

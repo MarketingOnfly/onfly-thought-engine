@@ -19,6 +19,7 @@ import {
   detectFabricatedTokens,
   verifyFactsCited,
 } from "@/lib/anthropic/polish-pass";
+import { buildVoiceCard } from "@/lib/anthropic/voice-card";
 import { getFewShotExamples } from "@/lib/anthropic/few-shot";
 import { reviewText } from "@/lib/anthropic/review";
 import { selfRepair } from "@/lib/anthropic/self-repair";
@@ -97,6 +98,10 @@ export async function POST(request: NextRequest) {
 
   const variations = parsed.data.variations ?? 1;
   const systemPrompt = buildLeaderSystemPrompt(context);
+  // Voice card compacto — vai pra TODAS as fases que reescrevem texto
+  // (polish, repair, fabrication-fix). Sem ele essas fases editavam
+  // "no escuro" e lavavam a voz do líder a cada passada.
+  const voiceCard = buildVoiceCard(context.leader as LeaderProfile);
 
   // ============================================================
   // BARREIRA ANTI-FABRICAÇÃO (REGRA ZERO em código)
@@ -499,6 +504,7 @@ Esse é o pior erro que esse motor pode cometer: fingir que leu o link e inventa
           // que o draft cita pelo menos um. Sem isso, o modelo
           // "esquece" do material às vezes.
           mustCiteFacts: parsed.data.must_cite_facts ?? undefined,
+          voiceCard,
         })
       )
     );
@@ -549,6 +555,7 @@ Esse é o pior erro que esse motor pode cometer: fingir que leu o link e inventa
             issues: review.issues.slice(0, 6),
             voiceNotes: review.voice_notes,
             voiceMatchScore: review.voice_match_score,
+            voiceCard,
           });
           return {
             ...v,
@@ -644,6 +651,15 @@ Esse é o pior erro que esse motor pode cometer: fingir que leu o link e inventa
         const response = await anthropicLocal.messages.create({
           model: FAST_MODEL,
           max_tokens: maxTokens,
+          // BUG ANTERIOR: essa chamada não tinha system nenhum — o
+          // reescritor não conhecia o líder e devolvia prosa neutra.
+          system: [
+            {
+              type: "text",
+              text: `Você é um editor cirúrgico. Remove tokens fabricados de um texto SEM apagar a personalidade do autor. Cada frase sem token fabricado fica intocada, palavra por palavra.\n\n${voiceCard}`,
+              cache_control: { type: "ephemeral" },
+            },
+          ],
           messages: [{ role: "user", content: userPrompt }],
         });
         const newText = response.content

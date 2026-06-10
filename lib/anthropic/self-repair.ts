@@ -39,6 +39,9 @@ export async function selfRepair(opts: {
   issues: ReviewIssue[];
   voiceNotes?: string;
   voiceMatchScore: number;
+  // Cartão de voz do líder (buildVoiceCard) — sem ele, o repair corrige
+  // a issue mas neutraliza a voz no processo.
+  voiceCard?: string;
 }): Promise<string> {
   if (!opts.draft?.trim() || !opts.issues.length) return opts.draft;
 
@@ -78,8 +81,17 @@ export async function selfRepair(opts: {
       {
         type: "text",
         text: SYSTEM_PROMPT,
-        cache_control: { type: "ephemeral" },
+        cache_control: { type: "ephemeral" as const },
       },
+      ...(opts.voiceCard
+        ? [
+            {
+              type: "text" as const,
+              text: opts.voiceCard,
+              cache_control: { type: "ephemeral" as const },
+            },
+          ]
+        : []),
     ],
     messages: [{ role: "user", content: userPrompt }],
   });
